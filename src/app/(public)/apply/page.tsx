@@ -1,7 +1,15 @@
 import { ApplyForm } from "@/components/forms/apply-form";
 import { getPortalReferenceData } from "@/lib/services/platform";
 
-export default async function ApplyPage() {
+type ApplyPageProps = {
+  searchParams?: Promise<{
+    ref?: string | string[];
+  }>;
+};
+
+export default async function ApplyPage({ searchParams }: ApplyPageProps) {
+  const params = searchParams ? await searchParams : {};
+  const referralCode = typeof params.ref === "string" ? params.ref.trim().toUpperCase() : undefined;
   const { products, prompts } = await getPortalReferenceData();
 
   return (
@@ -17,6 +25,7 @@ export default async function ApplyPage() {
         </div>
         <ApplyForm
           products={products.map((product) => ({ id: product.id, name: product.name }))}
+          referralCode={referralCode}
           prompts={prompts.map((prompt) => ({
             id: prompt.id,
             label: prompt.label,

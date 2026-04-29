@@ -11,6 +11,7 @@ export const applicationSchema = z.object({
   aiTechExperience: z.string().optional().default(""),
   audienceDescription: z.string().optional().default(""),
   productId: z.string().optional(),
+  referralCode: z.string().optional(),
   answers: z.array(
     z.object({
       questionPromptId: z.string().min(1),

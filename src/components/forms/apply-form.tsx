@@ -18,9 +18,10 @@ type PromptOption = {
 type ApplyFormProps = {
   products: ProductOption[];
   prompts: PromptOption[];
+  referralCode?: string;
 };
 
-export function ApplyForm({ products, prompts }: ApplyFormProps) {
+export function ApplyForm({ products, prompts, referralCode }: ApplyFormProps) {
   const [step, setStep] = useState<1 | 2>(1);
   const [message, action] = useActionState(submitApplicationAction, undefined);
   const [registration, setRegistration] = useState({
@@ -66,6 +67,7 @@ export function ApplyForm({ products, prompts }: ApplyFormProps) {
 
   return (
     <form action={action} className="stack-lg">
+      {referralCode ? <input type="hidden" name="referralCode" value={referralCode} /> : null}
       {step === 1 ? (
         <div className="stack-lg">
           <div>
@@ -118,6 +120,12 @@ export function ApplyForm({ products, prompts }: ApplyFormProps) {
               />
             </label>
           </div>
+          {referralCode ? (
+            <div className="note">
+              <strong>Vendor referral code applied</strong>
+              <p className="muted">{referralCode}</p>
+            </div>
+          ) : null}
           {registrationError ? <p className="form-message">{registrationError}</p> : null}
           <div className="button-row">
             <button className="button" type="button" onClick={continueToQuestions}>

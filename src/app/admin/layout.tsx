@@ -5,6 +5,7 @@ const nav = [
   { href: "/admin", label: "Overview" },
   { href: "/admin/applications", label: "Applications" },
   { href: "/admin/partners", label: "Partners" },
+  { href: "/admin/vendors", label: "Vendors" },
   { href: "/admin/referrals", label: "Referrals" },
   { href: "/admin/deals", label: "Deals" },
   { href: "/admin/commissions", label: "Commissions" },

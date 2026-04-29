@@ -239,11 +239,14 @@ model PartnerApplication {
   activatedAt           DateTime?
   productId             String?
   assignedTierId        String?
+  referredByVendorId    String?
+  referralCodeUsed      String?
   reviewedById          String?
   createdAt             DateTime                 @default(now())
   updatedAt             DateTime                 @updatedAt
   product               Product?                 @relation(fields: [productId], references: [id])
   assignedTier          Tier?                    @relation(fields: [assignedTierId], references: [id])
+  referredByVendor      PartnerAccount?          @relation("VendorReferredApplications", fields: [referredByVendorId], references: [id], onDelete: SetNull)
   reviewedBy            User?                    @relation("ApplicationReviewer", fields: [reviewedById], references: [id])
   partnerAccount        PartnerAccount?
   answers               ApplicationAnswer[]
@@ -251,6 +254,8 @@ model PartnerApplication {
 
   @@index([email])
   @@index([status])
+  @@index([referredByVendorId])
+  @@index([referralCodeUsed])
 }
 
 model ApplicationAnswer {
@@ -268,6 +273,13 @@ model PartnerAccount {
   id                        String                   @id @default(cuid())
   applicationId             String                   @unique
   tierId                    String
+  affiliateId               String?                  @unique
+  vendorReferralCode        String?                  @unique
+  vendorReferralCodeActive  Boolean                  @default(false)
+  vendorReferralCodeGeneratedAt DateTime?
+  referralClicks            Int                      @default(0)
+  referredByVendorId        String?
+  referralCodeUsed          String?
   company                   String
   primaryContactName        String
   primaryContactEmail       String                   @unique
@@ -281,6 +293,9 @@ model PartnerAccount {
   updatedAt                 DateTime                 @updatedAt
   application               PartnerApplication       @relation(fields: [applicationId], references: [id])
   tier                      Tier                     @relation(fields: [tierId], references: [id])
+  referredByVendor          PartnerAccount?          @relation("VendorAffiliates", fields: [referredByVendorId], references: [id], onDelete: SetNull)
+  affiliates                PartnerAccount[]         @relation("VendorAffiliates")
+  referredApplications      PartnerApplication[]      @relation("VendorReferredApplications")
   profile                   PartnerProfile?
   agreements                Agreement[]
   user                      User?
@@ -293,6 +308,9 @@ model PartnerAccount {
   notifications             Notification[]
   documents                 AgreementDocument[]
   notes                     InternalNote[]
+
+  @@index([referredByVendorId])
+  @@index([referralCodeUsed])
 }
 
 model PartnerProfile {

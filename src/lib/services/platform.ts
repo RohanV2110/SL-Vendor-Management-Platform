@@ -153,6 +153,36 @@ function buildInviteUrl(token: string) {
   return `${env.appBaseUrl}/login/setup?token=${token}`;
 }
 
+function normalizeReferralCode(value?: string | null) {
+  return value?.trim().toUpperCase().replace(/[^A-Z0-9-]/g, "") || undefined;
+}
+
+async function generateUniqueAffiliateId(tx: Prisma.TransactionClient) {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const id = `AFF-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
+    const existing = await tx.partnerAccount.findUnique({ where: { affiliateId: id }, select: { id: true } });
+    if (!existing) {
+      return id;
+    }
+  }
+
+  throw new Error("Unable to generate a unique affiliate ID.");
+}
+
+async function generateUniqueVendorReferralCode(tx: Prisma.TransactionClient, name: string) {
+  const prefix = slugify(name).replace(/-/g, "").toUpperCase().slice(0, 10) || "VENDOR";
+
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const code = `${prefix}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
+    const existing = await tx.partnerAccount.findUnique({ where: { vendorReferralCode: code }, select: { id: true } });
+    if (!existing) {
+      return code;
+    }
+  }
+
+  throw new Error("Unable to generate a unique vendor referral code.");
+}
+
 async function ensureAgreementDocuments(
   tx: Prisma.TransactionClient,
   partnerAccountId: string,
@@ -216,6 +246,7 @@ export async function submitPartnerApplication(input: {
   aiTechExperience: string;
   audienceDescription: string;
   productId?: string;
+  referralCode?: string;
   answers: Array<{ questionPromptId: string; response: string }>;
 }) {
   const prompts = await prisma.questionPrompt.findMany({
@@ -225,8 +256,24 @@ export async function submitPartnerApplication(input: {
   });
 
   const promptMap = new Map(prompts.map((prompt) => [prompt.id, prompt]));
+  const referralCode = normalizeReferralCode(input.referralCode);
 
   const application = await prisma.$transaction(async (tx) => {
+    const referringVendor = referralCode
+      ? await tx.partnerAccount.findUnique({
+          where: { vendorReferralCode: referralCode },
+          select: { id: true, primaryContactEmail: true, vendorReferralCodeActive: true }
+        })
+      : null;
+
+    if (referralCode && (!referringVendor || !referringVendor.vendorReferralCodeActive)) {
+      throw new Error("The referral code is invalid or inactive.");
+    }
+
+    if (referringVendor?.primaryContactEmail.toLowerCase() === input.email.toLowerCase()) {
+      throw new Error("A vendor cannot use their own referral code.");
+    }
+
     const existingPartnerAccount = await tx.partnerAccount.findUnique({
       where: { primaryContactEmail: input.email },
       include: {
@@ -293,6 +340,8 @@ export async function submitPartnerApplication(input: {
               aiTechExperience: input.aiTechExperience,
               audienceDescription: input.audienceDescription,
               productId: input.productId ?? null,
+              referredByVendorId: referringVendor?.id ?? null,
+              referralCodeUsed: referralCode ?? null,
               status: PartnerApplicationStatus.SUBMITTED,
               answers: {
                 deleteMany: {},
@@ -315,6 +364,8 @@ export async function submitPartnerApplication(input: {
               aiTechExperience: input.aiTechExperience,
               audienceDescription: input.audienceDescription,
               productId: input.productId ?? null,
+              referredByVendorId: referringVendor?.id ?? null,
+              referralCodeUsed: referralCode ?? null,
               status: PartnerApplicationStatus.SUBMITTED,
               answers: {
                 create: input.answers.map((answer) => ({
@@ -335,6 +386,9 @@ export async function submitPartnerApplication(input: {
           company: input.company,
           primaryContactName: input.fullName,
           primaryContactEmail: input.email,
+          affiliateId: await generateUniqueAffiliateId(tx),
+          referredByVendorId: referringVendor?.id ?? null,
+          referralCodeUsed: referralCode ?? null,
           phone: input.phone,
           country: input.country,
           status: PartnerAccountStatus.INACTIVE,
@@ -360,6 +414,8 @@ export async function submitPartnerApplication(input: {
           aiTechExperience: input.aiTechExperience,
           audienceDescription: input.audienceDescription,
           productId: input.productId ?? created.productId,
+          referredByVendorId: created.referredByVendorId ?? referringVendor?.id ?? null,
+          referralCodeUsed: created.referralCodeUsed ?? referralCode ?? null,
           answers: {
             deleteMany: {},
             create: input.answers.map((answer) => ({
@@ -377,6 +433,9 @@ export async function submitPartnerApplication(input: {
           tierId: existingPartnerAccount.tierId ?? defaultTier.id,
           company: input.company,
           primaryContactName: input.fullName,
+          affiliateId: existingPartnerAccount.affiliateId ?? (await generateUniqueAffiliateId(tx)),
+          referredByVendorId: existingPartnerAccount.referredByVendorId ?? referringVendor?.id ?? null,
+          referralCodeUsed: existingPartnerAccount.referralCodeUsed ?? referralCode ?? null,
           phone: input.phone,
           country: input.country
         }
@@ -460,6 +519,55 @@ export async function submitPartnerApplication(input: {
   return application;
 }
 
+export async function generateVendorReferralCode(input: { partnerAccountId: string; actorUserId?: string }) {
+  return prisma.$transaction(async (tx) => {
+    const partner = await tx.partnerAccount.findUnique({
+      where: { id: input.partnerAccountId },
+      select: {
+        id: true,
+        company: true,
+        primaryContactName: true,
+        vendorReferralCode: true,
+        vendorReferralCodeActive: true
+      }
+    });
+
+    if (!partner) {
+      throw new Error("Vendor not found.");
+    }
+
+    const code =
+      partner.vendorReferralCode && partner.vendorReferralCodeActive
+        ? partner.vendorReferralCode
+        : await generateUniqueVendorReferralCode(tx, partner.company || partner.primaryContactName);
+
+    const updated = await tx.partnerAccount.update({
+      where: { id: partner.id },
+      data: {
+        vendorReferralCode: code,
+        vendorReferralCodeActive: true,
+        vendorReferralCodeGeneratedAt: new Date()
+      },
+      select: { id: true, vendorReferralCode: true }
+    });
+
+    await createAuditLog(tx, {
+      actorUserId: input.actorUserId,
+      entityType: "PartnerAccount",
+      entityId: partner.id,
+      action: "vendor.referral_code.generated",
+      summary: `Vendor referral code generated for ${partner.company || partner.primaryContactName}`,
+      previousState: { vendorReferralCode: partner.vendorReferralCode, active: partner.vendorReferralCodeActive },
+      nextState: { vendorReferralCode: updated.vendorReferralCode, active: true }
+    });
+
+    return {
+      code: updated.vendorReferralCode!,
+      link: `${env.appBaseUrl}/apply?ref=${updated.vendorReferralCode}`
+    };
+  });
+}
+
 export async function reviewPartnerApplication(input: {
   applicationId: string;
   adminUserId: string;
@@ -530,6 +638,9 @@ export async function reviewPartnerApplication(input: {
             company: application.company,
             primaryContactName: application.fullName,
             primaryContactEmail: application.email,
+            affiliateId: existingPartnerAccount.affiliateId ?? (await generateUniqueAffiliateId(tx)),
+            referredByVendorId: existingPartnerAccount.referredByVendorId ?? application.referredByVendorId,
+            referralCodeUsed: existingPartnerAccount.referralCodeUsed ?? application.referralCodeUsed,
             phone: application.phone,
             country: application.country,
             status:
@@ -546,6 +657,9 @@ export async function reviewPartnerApplication(input: {
             company: application.company,
             primaryContactName: application.fullName,
             primaryContactEmail: application.email,
+            affiliateId: await generateUniqueAffiliateId(tx),
+            referredByVendorId: application.referredByVendorId,
+            referralCodeUsed: application.referralCodeUsed,
             phone: application.phone,
             country: application.country,
             status: PartnerAccountStatus.INVITED,

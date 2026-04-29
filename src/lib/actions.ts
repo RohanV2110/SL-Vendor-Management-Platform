@@ -12,6 +12,7 @@ import {
   createPayoutBatch,
   createReferral,
   createTierWithRule,
+  generateVendorReferralCode,
   getStripeOnboardingLink,
   markPayoutBatchPaid,
   markStripeOnboardingComplete,
@@ -78,6 +79,7 @@ export async function submitApplicationAction(_: string | undefined, formData: F
     aiTechExperience: getRequiredString(formData, "aiTechExperience").trim(),
     audienceDescription: getRequiredString(formData, "audienceDescription").trim(),
     productId: getRequiredString(formData, "productId").trim() || undefined,
+    referralCode: getOptionalString(formData, "referralCode")?.trim(),
     answers
   });
 
@@ -100,6 +102,23 @@ export async function submitApplicationAction(_: string | undefined, formData: F
   }
 
   redirect("/login?applied=1");
+}
+
+export async function generateVendorReferralCodeAction(formData: FormData) {
+  const user = await requireRole("PARTNER");
+  const partnerAccountId = getRequiredString(formData, "partnerAccountId");
+
+  if (partnerAccountId !== user.partnerAccountId) {
+    throw new Error("You can only manage your own referral code.");
+  }
+
+  await generateVendorReferralCode({
+    partnerAccountId,
+    actorUserId: user.id
+  });
+
+  revalidatePath("/partner/referrals");
+  revalidatePath("/admin/vendors");
 }
 
 export async function reviewApplicationAction(formData: FormData) {
