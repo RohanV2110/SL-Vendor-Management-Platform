@@ -10,15 +10,12 @@
   --mist: #d8d3de;
 
   --bg: var(--obsidian);
-  --bg-panel: color-mix(in srgb, var(--cream) 92%, var(--lavender));
-  --bg-panel-strong: var(--cream);
-  --bg-panel-soft: color-mix(in srgb, var(--lavender) 24%, var(--cream));
+  --bg-panel: var(--charcoal);
+  --bg-panel-strong: var(--deep-plum);
   --ink: var(--cream);
-  --ink-on-light: var(--obsidian);
   --muted: var(--silver);
-  --muted-on-light: var(--mid-gray);
-  --line: color-mix(in srgb, var(--lavender) 54%, transparent);
-  --line-strong: color-mix(in srgb, var(--mid-gray) 34%, transparent);
+  --line: color-mix(in srgb, var(--mid-gray) 52%, transparent);
+  --line-strong: color-mix(in srgb, var(--mist) 42%, transparent);
   --accent: var(--lavender);
   --accent-deep: var(--mist);
   --accent-soft: color-mix(in srgb, var(--lavender) 14%, transparent);
@@ -43,8 +40,8 @@ html {
 body {
   margin: 0;
   min-height: 100vh;
-  color: var(--ink-on-light);
-  background: var(--cream);
+  color: var(--ink);
+  background: var(--bg);
   font-family: var(--font-body);
 }
 
@@ -69,15 +66,15 @@ textarea {
   min-height: 100vh;
   place-items: center;
   padding: 32px;
-  background: var(--cream);
+  background: var(--obsidian);
 }
 
 .hero {
   width: min(1120px, 100%);
   padding: 40px;
-  border: 1px solid var(--lavender);
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
-  background: var(--bg-panel);
+  background: var(--charcoal);
   box-shadow: var(--shadow);
 }
 
@@ -101,7 +98,7 @@ h1,
 h2,
 h3 {
   margin: 0;
-  color: var(--obsidian);
+  color: var(--cream);
   font-family: var(--font-heading), Georgia, serif;
   font-weight: 700;
   letter-spacing: -0.025em;
@@ -125,7 +122,7 @@ h3 {
 .lead {
   max-width: 60ch;
   margin: 12px 0 0;
-  color: var(--mid-gray);
+  color: var(--silver);
   line-height: 1.6;
 }
 
@@ -166,13 +163,13 @@ h3 {
 
 .button-secondary {
   background: transparent;
-  color: var(--obsidian);
-  border-color: var(--lavender);
+  color: var(--cream);
+  border-color: var(--mid-gray);
 }
 
 .button-secondary:hover {
-  background: var(--cream);
-  color: var(--obsidian);
+  background: var(--deep-plum);
+  color: var(--cream);
 }
 
 .button-ghost {
@@ -193,8 +190,8 @@ h3 {
   place-items: center;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: var(--cream);
-  color: var(--obsidian);
+  background: var(--deep-plum);
+  color: var(--cream);
   cursor: pointer;
 }
 
@@ -219,7 +216,7 @@ h3 {
   overflow: hidden;
   border: 1px solid var(--line-strong);
   border-radius: 8px;
-  background: var(--bg-panel);
+  background: var(--charcoal);
   box-shadow: var(--shadow);
 }
 
@@ -272,13 +269,13 @@ h3 {
   padding: 18px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: var(--bg-panel-soft);
+  background: var(--deep-plum);
 }
 
 .stat strong {
   display: block;
   margin-top: 6px;
-  color: var(--obsidian);
+  color: var(--cream);
   font-family: var(--font-heading), Georgia, serif;
   font-size: 2rem;
   font-weight: 700;
@@ -289,7 +286,7 @@ h3 {
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr);
   min-height: 100vh;
-  background: var(--cream);
+  background: var(--obsidian);
 }
 
 .sidebar {
@@ -297,7 +294,7 @@ h3 {
   flex-direction: column;
   gap: 18px;
   padding: 28px 22px;
-  border-right: 1px solid var(--lavender);
+  border-right: 1px solid var(--line);
   background: var(--obsidian);
   color: var(--cream);
 }
@@ -323,9 +320,9 @@ h3 {
 
 .nav-link {
   padding: 12px 14px;
-  border: 1px solid color-mix(in srgb, var(--lavender) 34%, transparent);
+  border: 1px solid var(--line);
   border-radius: 8px;
-  background: color-mix(in srgb, var(--lavender) 14%, var(--obsidian));
+  background: var(--charcoal);
   color: var(--mist);
 }
 
@@ -340,7 +337,7 @@ h3 {
 
 .content {
   padding: 28px;
-  background: var(--cream);
+  background: var(--obsidian);
 }
 
 .page-header {
@@ -354,9 +351,9 @@ h3 {
 
 .panel {
   overflow: hidden;
-  border: 1px solid var(--lavender);
+  border: 1px solid var(--line);
   border-radius: 8px;
-  background: var(--bg-panel);
+  background: var(--charcoal);
   box-shadow: var(--shadow);
 }
 
@@ -377,7 +374,7 @@ h3 {
 }
 
 .field span {
-  color: var(--mid-gray);
+  color: var(--mist);
   font-size: 0.95rem;
   font-weight: 700;
 }
@@ -389,8 +386,8 @@ h3 {
   padding: 14px 16px;
   border: 1px solid var(--line-strong);
   border-radius: 8px;
-  background: var(--warm-white);
-  color: var(--obsidian);
+  background: var(--obsidian);
+  color: var(--cream);
 }
 
 .input:focus,
@@ -412,7 +409,7 @@ h3 {
 
 .form-message {
   margin: 0;
-  color: var(--deep-plum);
+  color: var(--mist);
   font-weight: 700;
 }
 
@@ -420,7 +417,7 @@ h3 {
   display: inline-flex;
   align-items: center;
   padding: 6px 10px;
-  border: 1px solid var(--lavender);
+  border: 1px solid var(--line);
   border-radius: 8px;
   font-size: 0.78rem;
   font-weight: 700;
@@ -428,22 +425,22 @@ h3 {
 
 .badge-success {
   background: var(--success-soft);
-  color: var(--obsidian);
+  color: var(--success);
 }
 
 .badge-danger {
   background: var(--danger-soft);
-  color: var(--deep-plum);
+  color: var(--danger);
 }
 
 .badge-warning {
   background: var(--warning-soft);
-  color: var(--obsidian);
+  color: var(--warning);
 }
 
 .badge-neutral {
-  background: color-mix(in srgb, var(--lavender) 22%, var(--cream));
-  color: var(--obsidian);
+  background: color-mix(in srgb, var(--mid-gray) 18%, transparent);
+  color: var(--mist);
 }
 
 .table-wrap {
@@ -473,11 +470,11 @@ th {
 }
 
 td {
-  color: var(--obsidian);
+  color: var(--mist);
 }
 
 .muted {
-  color: var(--mid-gray);
+  color: var(--silver);
 }
 
 .pill-row {
@@ -488,24 +485,24 @@ td {
 
 .pill {
   padding: 8px 12px;
-  border: 1px solid var(--lavender);
+  border: 1px solid var(--line);
   border-radius: 8px;
-  background: var(--bg-panel-soft);
-  color: var(--obsidian);
+  background: var(--deep-plum);
+  color: var(--mist);
 }
 
 .note {
   margin: 0;
   padding: 14px 16px;
-  border: 1px solid var(--lavender);
+  border: 1px solid var(--line);
   border-radius: 8px;
-  background: var(--bg-panel-soft);
-  color: var(--obsidian);
+  background: var(--deep-plum);
+  color: var(--mist);
 }
 
 .note strong,
 td strong {
-  color: var(--obsidian);
+  color: var(--cream);
 }
 
 .inline-form {
@@ -519,8 +516,8 @@ td strong {
   padding: 24px;
   border: 1px dashed var(--line-strong);
   border-radius: 8px;
-  background: var(--bg-panel-soft);
-  color: var(--mid-gray);
+  background: var(--deep-plum);
+  color: var(--silver);
 }
 
 @media (max-width: 960px) {
