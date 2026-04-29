@@ -1,0 +1,23 @@
+"use client";
+
+type ConfirmSubmitButtonProps = {
+  label: string;
+  confirmMessage: string;
+  className?: string;
+};
+
+export function ConfirmSubmitButton({ label, confirmMessage, className }: ConfirmSubmitButtonProps) {
+  return (
+    <button
+      className={className ?? "button button-secondary"}
+      type="submit"
+      onClick={(event) => {
+        if (!window.confirm(confirmMessage)) {
+          event.preventDefault();
+        }
+      }}
+    >
+      {label}
+    </button>
+  );
+}

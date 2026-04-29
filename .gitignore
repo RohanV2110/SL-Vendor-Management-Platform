@@ -1,0 +1,12 @@
+.next
+node_modules
+coverage
+.cache
+.npm-cache
+.postgres-data
+.postgres.log
+.env
+.env.local
+prisma/dev.db
+prisma/dev.db-journal
+/uploads
