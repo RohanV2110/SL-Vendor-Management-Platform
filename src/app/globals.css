@@ -1,13 +1,18 @@
 :root {
-  --obsidian: #0e0c0f;
-  --cream: #ede8e1;
-  --lavender: #c5b8d4;
-  --charcoal: #2c2830;
-  --deep-plum: #3d3347;
-  --mid-gray: #6b6570;
-  --warm-white: #f7f4f0;
-  --silver: #a8a5ae;
-  --mist: #d8d3de;
+  /* Obsidian | RGB 14 12 15 | CMYK 74 69 64 84 */
+  --obsidian: #0E0C0F;
+  /* Cream | RGB 237 232 225 | CMYK 6 6 9 0 */
+  --cream: #EDE8E1;
+  /* Lavender | RGB 197 184 212 | CMYK 21 26 3 0 */
+  --lavender: #C5B8D4;
+  /* Charcoal | RGB 44 40 48 | CMYK 73 70 57 63 */
+  --charcoal: #2C2830;
+  /* Mid Gray | RGB 107 101 112 | CMYK 59 56 43 16 */
+  --mid-gray: #6B6570;
+  /* Warm White | RGB 247 244 240 | CMYK 2 2 4 0 */
+  --warm-white: #F7F4F0;
+  /* Mist | RGB 216 211 222 | CMYK 13 14 5 0 */
+  --mist: #D8D3DE;
 
   --bg: var(--obsidian);
   --bg-panel: color-mix(in srgb, var(--cream) 92%, var(--lavender));
@@ -15,7 +20,7 @@
   --bg-panel-soft: color-mix(in srgb, var(--lavender) 24%, var(--cream));
   --ink: var(--cream);
   --ink-on-light: var(--obsidian);
-  --muted: var(--silver);
+  --muted: var(--mid-gray);
   --muted-on-light: var(--mid-gray);
   --line: color-mix(in srgb, var(--lavender) 54%, transparent);
   --line-strong: color-mix(in srgb, var(--mid-gray) 34%, transparent);
@@ -26,8 +31,8 @@
   --success-soft: color-mix(in srgb, var(--lavender) 16%, transparent);
   --danger: var(--mist);
   --danger-soft: color-mix(in srgb, var(--mist) 14%, transparent);
-  --warning: var(--silver);
-  --warning-soft: color-mix(in srgb, var(--silver) 14%, transparent);
+  --warning: var(--mid-gray);
+  --warning-soft: color-mix(in srgb, var(--mid-gray) 14%, transparent);
   --shadow: 0 32px 90px color-mix(in srgb, var(--obsidian) 72%, transparent);
   --font-body: "Helvetica Neue LT Std", "Helvetica Neue", Helvetica, sans-serif;
 }
@@ -319,7 +324,7 @@ h3 {
 
 .sidebar-copy {
   margin: 0;
-  color: var(--silver);
+  color: var(--mist);
   line-height: 1.5;
 }
 
@@ -409,7 +414,7 @@ h3 {
 
 .input::placeholder,
 .textarea::placeholder {
-  color: var(--silver);
+  color: var(--mid-gray);
 }
 
 .textarea {
@@ -419,7 +424,7 @@ h3 {
 
 .form-message {
   margin: 0;
-  color: var(--deep-plum);
+  color: var(--charcoal);
   font-weight: 700;
 }
 
@@ -440,7 +445,7 @@ h3 {
 
 .badge-danger {
   background: var(--danger-soft);
-  color: var(--deep-plum);
+  color: var(--charcoal);
 }
 
 .badge-warning {
