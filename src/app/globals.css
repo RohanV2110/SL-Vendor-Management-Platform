@@ -840,6 +840,29 @@ td strong {
   color: var(--mid-gray);
 }
 
+.activity-grid {
+  align-items: stretch;
+}
+
+.activity-column {
+  grid-template-rows: 1fr auto;
+}
+
+.activity-card {
+  min-height: 230px;
+  height: 100%;
+}
+
+.activity-empty-card {
+  min-height: 140px;
+  height: auto;
+}
+
+.activity-card-lines {
+  display: block;
+  margin-top: 22px;
+}
+
 @media (max-width: 960px) {
   .hero-grid,
   .stats-grid,

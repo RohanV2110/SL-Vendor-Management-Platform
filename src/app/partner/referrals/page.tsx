@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { PartnerAccountStatus } from "@prisma/client";
 import { SectionCard } from "@/components/section-card";
 import { VendorReferralCard } from "@/components/vendor-referral-card";
 import { requirePartnerAccountId } from "@/lib/auth-helpers";
@@ -8,27 +7,23 @@ import { prisma } from "@/lib/prisma";
 
 export default async function PartnerReferralsPage() {
   const partnerId = await requirePartnerAccountId();
+  const thirtyDaysAgo = new Date(Date.now() - 1000 * 60 * 60 * 24 * 30);
 
-  const [partner, totalAffiliates, activeAffiliates, inactiveAffiliates] = await Promise.all([
+  const [partner, totalAffiliates, newAffiliates30] = await Promise.all([
     prisma.partnerAccount.findUnique({
       where: { id: partnerId },
       select: {
         id: true,
         vendorReferralCode: true,
-        vendorReferralCodeActive: true
+        vendorReferralCodeActive: true,
+        referralClicks: true
       }
     }),
     prisma.partnerAccount.count({ where: { referredByVendorId: partnerId } }),
     prisma.partnerAccount.count({
       where: {
         referredByVendorId: partnerId,
-        status: PartnerAccountStatus.ACTIVE
-      }
-    }),
-    prisma.partnerAccount.count({
-      where: {
-        referredByVendorId: partnerId,
-        status: { not: PartnerAccountStatus.ACTIVE }
+        createdAt: { gte: thirtyDaysAgo }
       }
     })
   ]);
@@ -60,12 +55,12 @@ export default async function PartnerReferralsPage() {
             <strong>{totalAffiliates}</strong>
           </div>
           <div className="metric-card">
-            <span className="muted">Active Affiliates</span>
-            <strong>{activeAffiliates}</strong>
+            <span className="muted">New Affiliates</span>
+            <strong>{newAffiliates30}</strong>
           </div>
           <div className="metric-card">
-            <span className="muted">Inactive Affiliates</span>
-            <strong>{inactiveAffiliates}</strong>
+            <span className="muted">Referral Clicks</span>
+            <strong>{partner.referralClicks}</strong>
           </div>
         </div>
       </SectionCard>

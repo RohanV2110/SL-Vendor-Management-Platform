@@ -43,7 +43,6 @@ export function VendorReferralCard({
           <input type="hidden" name="partnerAccountId" value={partnerAccountId} />
           <SubmitButton label="Generate Referral Link" pendingLabel="Generating..." />
         </form>
-        {vendorReferralCode ? <p className="form-message">Referral link generated. Share it with affiliates you want connected to your partner account.</p> : null}
       </div>
     </SectionCard>
   );
