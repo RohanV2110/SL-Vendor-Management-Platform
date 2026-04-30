@@ -1,0 +1,49 @@
+services:
+  vms-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ${VMS_APP_IMAGE:-vms-app:local}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+      DB_HOST: ${DB_HOST:-postgres}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_NAME: ${VMS_DB_NAME:-sugarleather_vms}
+      DB_SCHEMA: ${VMS_DB_SCHEMA:-public}
+      POSTGRES_ADMIN_DB: ${POSTGRES_ADMIN_DB:-postgres}
+      DATABASE_URL: ${VMS_DATABASE_URL:-}
+      NEXTAUTH_URL: ${VMS_NEXTAUTH_URL:-http://localhost:3001}
+      NEXTAUTH_SECRET: ${VMS_NEXTAUTH_SECRET:-replace-this-secret-before-production}
+      APP_BASE_URL: ${VMS_APP_BASE_URL:-http://localhost:3001}
+      UPLOAD_DIR: /app/uploads
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-partners@sugarleather.ai}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_CONNECT_REFRESH_URL: ${VMS_STRIPE_CONNECT_REFRESH_URL:-http://localhost:3001/partner/dashboard}
+      STRIPE_CONNECT_RETURN_URL: ${VMS_STRIPE_CONNECT_RETURN_URL:-http://localhost:3001/partner/dashboard}
+    ports:
+      - "${VMS_PORT:-3001}:3000"
+    volumes:
+      - uploads:/app/uploads
+    command: ./scripts/docker-init-and-start.sh
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/ >/dev/null"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - docker_stack
+
+volumes:
+  uploads:
+
+networks:
+  docker_stack:
+    external: true
+    name: docker-stack

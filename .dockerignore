@@ -1,0 +1,17 @@
+.git
+.next
+.cache
+.npm-cache
+node_modules
+coverage
+uploads
+.postgres-data
+.postgres.log
+
+.env
+.env.*
+!.env.example
+
+Dockerfile
+docker-compose*.yml
+README.md
