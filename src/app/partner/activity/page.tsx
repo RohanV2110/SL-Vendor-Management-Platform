@@ -35,26 +35,22 @@ export default async function PartnerActivityPage() {
   return (
     <div className="stack-lg">
       <SectionCard title="Quarterly activity tracking" eyebrow="Program activity">
-        <div className="two-col">
-          <div className="stack-md">
-            <p className="note">
+        <div className="stack-lg">
+          <div className="two-col activity-grid">
+            <p className="note activity-card">
               <strong>Thresholds</strong>
-              <br />
-              Approved referrals: {rule?.quarterlyApprovedReferralsMin ?? 0}
-              <br />
-              Converted deals: {rule?.quarterlyConvertedDealsMin ?? 0}
-              <br />
-              Revenue minimum: {formatCurrency(rule?.quarterlyRevenueMin?.toString() ?? 0)}
-              <br />
-              Commission minimum: {formatCurrency(rule?.quarterlyCommissionMin?.toString() ?? 0)}
+              <span className="activity-card-lines">
+                Approved referrals: {rule?.quarterlyApprovedReferralsMin ?? 0}
+                <br />
+                Converted deals: {rule?.quarterlyConvertedDealsMin ?? 0}
+                <br />
+                Revenue minimum: {formatCurrency(rule?.quarterlyRevenueMin?.toString() ?? 0)}
+                <br />
+                Commission minimum: {formatCurrency(rule?.quarterlyCommissionMin?.toString() ?? 0)}
+              </span>
             </p>
-            <form action={refreshQuarterlyActivityAction}>
-              <SubmitButton label="Refresh activity snapshot" pendingLabel="Refreshing..." />
-            </form>
-          </div>
-          <div className="stack-md">
             {snapshot ? (
-              <div className="note">
+              <div className="note activity-card">
                 <div className="inline-form" style={{ justifyContent: "space-between" }}>
                   <strong>
                     Q{snapshot.quarter} {snapshot.year}
@@ -72,8 +68,13 @@ export default async function PartnerActivityPage() {
                 </p>
               </div>
             ) : (
-              <div className="empty-state">No activity snapshot yet. Refresh to generate one.</div>
+              <div className="empty-state activity-empty-card">No activity snapshot yet. Refresh to generate one.</div>
             )}
+          </div>
+          <div>
+            <form action={refreshQuarterlyActivityAction}>
+              <SubmitButton label="Refresh activity snapshot" pendingLabel="Refreshing..." />
+            </form>
           </div>
         </div>
       </SectionCard>
