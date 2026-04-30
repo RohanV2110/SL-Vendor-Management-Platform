@@ -1,14 +1,22 @@
+import { redirect } from "next/navigation";
 import { refreshQuarterlyActivityAction } from "@/lib/actions";
 import { SectionCard } from "@/components/section-card";
 import { StatusBadge } from "@/components/status-badge";
 import { SubmitButton } from "@/components/submit-button";
-import { requireRole } from "@/lib/auth-helpers";
+import { requirePartnerAccountId } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 import { formatCurrency } from "@/lib/utils";
 
 export default async function PartnerActivityPage() {
-  const user = await requireRole("PARTNER");
-  const partnerId = user.partnerAccountId!;
+  const partnerId = await requirePartnerAccountId();
+  const partner = await prisma.partnerAccount.findUnique({
+    where: { id: partnerId },
+    select: { tierId: true }
+  });
+
+  if (!partner) {
+    redirect("/apply");
+  }
 
   const [snapshot, rules] = await Promise.all([
     prisma.quarterlyActivitySnapshot.findFirst({
@@ -16,14 +24,7 @@ export default async function PartnerActivityPage() {
       orderBy: [{ year: "desc" }, { quarter: "desc" }]
     }),
     prisma.tierRule.findMany({
-      where: {
-        tierId: (
-          await prisma.partnerAccount.findUniqueOrThrow({
-            where: { id: partnerId },
-            select: { tierId: true }
-          })
-        ).tierId
-      },
+      where: { tierId: partner.tierId },
       orderBy: { createdAt: "desc" },
       take: 1
     })

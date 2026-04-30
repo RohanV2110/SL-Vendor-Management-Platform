@@ -37,7 +37,7 @@ export function LoginForm({ redirectTo }: { redirectTo?: string }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="stack-md">
+    <form onSubmit={handleSubmit} className="stack-md login-form">
       <input type="hidden" name="redirectTo" value={redirectTo ?? "/"} />
       <label className="field">
         <span>Email</span>
@@ -51,7 +51,7 @@ export function LoginForm({ redirectTo }: { redirectTo?: string }) {
       <button className="button" type="submit" disabled={pending}>
         {pending ? "Signing in..." : "Sign in"}
       </button>
-      <p className="muted" style={{ margin: 0 }}>
+      <p className="login-apply-copy">
         Need a partner account? <Link href="/apply">Apply here</Link>.
       </p>
     </form>

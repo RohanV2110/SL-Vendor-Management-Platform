@@ -3,12 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { AgreementDocumentType, CommissionLedgerStatus, CommissionType, DealStage, NoteEntityType } from "@prisma/client";
-import { requireRole, requireUser } from "@/lib/auth-helpers";
+import { requirePartnerAccountId, requireRole } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 import {
   activatePartnerAccount,
   completePartnerInvite,
   createClawback,
+  createManualAffiliate,
   createPayoutBatch,
   createReferral,
   createTierWithRule,
@@ -104,11 +105,37 @@ export async function submitApplicationAction(_: string | undefined, formData: F
   redirect("/login?applied=1");
 }
 
+export async function checkApplicationEmailAction(email: string) {
+  const normalizedEmail = email.trim().toLowerCase();
+
+  if (!normalizedEmail) {
+    return undefined;
+  }
+
+  const [existingUser, existingPartnerAccount] = await Promise.all([
+    prisma.user.findUnique({
+      where: { email: normalizedEmail },
+      select: { id: true }
+    }),
+    prisma.partnerAccount.findUnique({
+      where: { primaryContactEmail: normalizedEmail },
+      select: { id: true }
+    })
+  ]);
+
+  if (existingUser || existingPartnerAccount) {
+    return "An account with that email already exists. Please log in instead.";
+  }
+
+  return undefined;
+}
+
 export async function generateVendorReferralCodeAction(formData: FormData) {
   const user = await requireRole("PARTNER");
+  const verifiedPartnerAccountId = await requirePartnerAccountId();
   const partnerAccountId = getRequiredString(formData, "partnerAccountId");
 
-  if (partnerAccountId !== user.partnerAccountId) {
+  if (partnerAccountId !== verifiedPartnerAccountId) {
     throw new Error("You can only manage your own referral code.");
   }
 
@@ -117,6 +144,44 @@ export async function generateVendorReferralCodeAction(formData: FormData) {
     actorUserId: user.id
   });
 
+  revalidatePath("/partner/referrals");
+  revalidatePath("/partner/dashboard");
+  revalidatePath("/partner/affiliates");
+  revalidatePath("/admin/vendors");
+}
+
+export async function createAffiliateAction(formData: FormData) {
+  const user = await requireRole("PARTNER");
+  const partnerAccountId = await requirePartnerAccountId();
+  const socialFields = ["LinkedIn", "X / Twitter", "YouTube", "Instagram", "TikTok", "Website"];
+  const socialProfiles = socialFields
+    .map((label) => {
+      const value = getOptionalString(formData, label)?.trim();
+      return value ? `${label}: ${value}` : undefined;
+    })
+    .filter(Boolean)
+    .join("\n");
+
+  const name = getRequiredString(formData, "name").trim();
+  const email = getRequiredString(formData, "email").trim().toLowerCase();
+
+  if (!name || !email) {
+    throw new Error("Name and email are required.");
+  }
+
+  await createManualAffiliate({
+    partnerAccountId,
+    actorUserId: user.id,
+    name,
+    email,
+    company: getOptionalString(formData, "company")?.trim(),
+    phone: getOptionalString(formData, "phone")?.trim(),
+    socialProfiles,
+    notes: getOptionalString(formData, "notes")?.trim()
+  });
+
+  revalidatePath("/partner/affiliates");
+  revalidatePath("/partner/dashboard");
   revalidatePath("/partner/referrals");
   revalidatePath("/admin/vendors");
 }
@@ -172,9 +237,9 @@ export async function activatePartnerAction(formData: FormData) {
 }
 
 export async function createReferralAction(formData: FormData) {
-  const user = await requireRole("PARTNER");
+  const partnerAccountId = await requirePartnerAccountId();
   const partner = await prisma.partnerAccount.findUnique({
-    where: { id: user.partnerAccountId! },
+    where: { id: partnerAccountId },
     select: { status: true }
   });
 
@@ -200,7 +265,7 @@ export async function createReferralAction(formData: FormData) {
 
   await createReferral({
     ...parsed.data,
-    partnerAccountId: user.partnerAccountId!,
+    partnerAccountId,
     attachment: formData.get("attachment") as File | null
   });
   revalidatePath("/partner/referrals");
@@ -208,14 +273,14 @@ export async function createReferralAction(formData: FormData) {
 }
 
 export async function uploadDocumentAction(formData: FormData) {
-  const user = await requireRole("PARTNER");
+  const partnerAccountId = await requirePartnerAccountId();
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) {
     throw new Error("Choose a file to upload.");
   }
 
   await uploadPartnerDocument({
-    partnerAccountId: user.partnerAccountId!,
+    partnerAccountId,
     type: getRequiredString(formData, "type") as AgreementDocumentType,
     file
   });
@@ -298,15 +363,15 @@ export async function createClawbackAction(formData: FormData) {
 }
 
 export async function startStripeOnboardingAction() {
-  const user = await requireRole("PARTNER");
-  const link = await getStripeOnboardingLink(user.partnerAccountId!);
+  const partnerAccountId = await requirePartnerAccountId();
+  const link = await getStripeOnboardingLink(partnerAccountId);
   redirect(link.url);
 }
 
 export async function confirmStripeOnboardingAction() {
-  const user = await requireRole("PARTNER");
-  await markStripeOnboardingComplete(user.partnerAccountId!);
-  await refreshQuarterlyActivity(user.partnerAccountId!);
+  const partnerAccountId = await requirePartnerAccountId();
+  await markStripeOnboardingComplete(partnerAccountId);
+  await refreshQuarterlyActivity(partnerAccountId);
   revalidatePath("/partner/dashboard");
   revalidatePath("/partner/earnings");
 }
@@ -509,12 +574,9 @@ export async function deleteTierAction(formData: FormData) {
 }
 
 export async function refreshQuarterlyActivityAction() {
-  const user = await requireUser();
-  if (user.role !== "PARTNER" || !user.partnerAccountId) {
-    return;
-  }
+  const partnerAccountId = await requirePartnerAccountId();
 
-  await refreshQuarterlyActivity(user.partnerAccountId);
+  await refreshQuarterlyActivity(partnerAccountId);
   revalidatePath("/partner/activity");
   revalidatePath("/partner/dashboard");
 }

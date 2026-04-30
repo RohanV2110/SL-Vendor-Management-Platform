@@ -9,7 +9,7 @@ type NavItem = {
 
 type AppShellProps = {
   title: string;
-  subtitle: string;
+  subtitle?: string;
   nav: NavItem[];
   children: ReactNode;
 };
@@ -37,7 +37,7 @@ export function AppShell({ title, subtitle, nav, children }: AppShellProps) {
         <header className="page-header">
           <p className="eyebrow">Sugar & Leather AI</p>
           <h1>{title}</h1>
-          <p className="lead">{subtitle}</p>
+          {subtitle ? <p className="lead">{subtitle}</p> : null}
         </header>
         {children}
       </main>

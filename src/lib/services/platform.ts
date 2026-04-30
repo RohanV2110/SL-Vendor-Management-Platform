@@ -19,6 +19,7 @@ import {
 import { prisma } from "@/lib/prisma";
 import { sendTransactionalEmail } from "@/lib/email";
 import { env } from "@/lib/env";
+import { buildAriesReferralLink } from "@/lib/referral-links";
 import { calculateCommissionAmount, deriveReferralSubmissionStatus, evaluateQuarterlyActivity } from "@/lib/rules";
 import { saveUploadedFile } from "@/lib/storage";
 import { createConnectOnboardingLink, provisionConnectAccount } from "@/lib/stripe";
@@ -325,6 +326,9 @@ export async function submitPartnerApplication(input: {
           include: { answers: true }
         });
 
+    const applicationStatus = referringVendor ? PartnerApplicationStatus.ACTIVE : PartnerApplicationStatus.SUBMITTED;
+    const accountStatus = referringVendor ? PartnerAccountStatus.ACTIVE : PartnerAccountStatus.INACTIVE;
+
     const created =
       existingPartnerAccount?.application ??
       (latestUnboundApplication
@@ -342,7 +346,7 @@ export async function submitPartnerApplication(input: {
               productId: input.productId ?? null,
               referredByVendorId: referringVendor?.id ?? null,
               referralCodeUsed: referralCode ?? null,
-              status: PartnerApplicationStatus.SUBMITTED,
+              status: applicationStatus,
               answers: {
                 deleteMany: {},
                 create: input.answers.map((answer) => ({
@@ -366,7 +370,7 @@ export async function submitPartnerApplication(input: {
               productId: input.productId ?? null,
               referredByVendorId: referringVendor?.id ?? null,
               referralCodeUsed: referralCode ?? null,
-              status: PartnerApplicationStatus.SUBMITTED,
+              status: applicationStatus,
               answers: {
                 create: input.answers.map((answer) => ({
                   questionPromptId: answer.questionPromptId,
@@ -391,7 +395,7 @@ export async function submitPartnerApplication(input: {
           referralCodeUsed: referralCode ?? null,
           phone: input.phone,
           country: input.country,
-          status: PartnerAccountStatus.INACTIVE,
+          status: accountStatus,
           profile: {
             create: {
               promotionChannels: input.promotionChannels,
@@ -563,8 +567,132 @@ export async function generateVendorReferralCode(input: { partnerAccountId: stri
 
     return {
       code: updated.vendorReferralCode!,
-      link: `${env.appBaseUrl}/apply?ref=${updated.vendorReferralCode}`
+      link: buildAriesReferralLink(updated.vendorReferralCode!)
     };
+  });
+}
+
+export async function createManualAffiliate(input: {
+  partnerAccountId: string;
+  actorUserId: string;
+  name: string;
+  email: string;
+  company?: string;
+  phone?: string;
+  socialProfiles?: string;
+  notes?: string;
+}) {
+  return prisma.$transaction(async (tx) => {
+    const partner = await tx.partnerAccount.findUnique({
+      where: { id: input.partnerAccountId },
+      select: {
+        id: true,
+        tierId: true,
+        vendorReferralCode: true,
+        primaryContactEmail: true
+      }
+    });
+
+    if (!partner) {
+      throw new Error("Partner account not found.");
+    }
+
+    if (partner.primaryContactEmail.toLowerCase() === input.email.toLowerCase()) {
+      throw new Error("You cannot add yourself as an affiliate.");
+    }
+
+    const existing = await tx.partnerAccount.findUnique({
+      where: { primaryContactEmail: input.email },
+      select: { id: true }
+    });
+
+    if (existing) {
+      throw new Error("An affiliate with that email already exists.");
+    }
+
+    const defaultTier =
+      (await tx.tier.findFirst({
+        where: { isActive: true, isDefault: true },
+        orderBy: { createdAt: "asc" }
+      })) ??
+      (await tx.tier.findFirst({
+        where: { isActive: true },
+        orderBy: { createdAt: "asc" }
+      }));
+
+    if (!defaultTier) {
+      throw new Error("No active partner tier is configured.");
+    }
+
+    const company = input.company?.trim() || input.name;
+    const application = await tx.partnerApplication.create({
+      data: {
+        fullName: input.name,
+        email: input.email,
+        phone: input.phone ?? "",
+        company,
+        country: "",
+        promotionChannels: input.socialProfiles ?? "",
+        aiTechExperience: "",
+        audienceDescription: input.notes ?? "",
+        assignedTierId: defaultTier.id,
+        referredByVendorId: partner.id,
+        referralCodeUsed: partner.vendorReferralCode,
+        status: PartnerApplicationStatus.ACTIVE,
+        activatedAt: new Date()
+      }
+    });
+
+    const affiliate = await tx.partnerAccount.create({
+      data: {
+        applicationId: application.id,
+        tierId: defaultTier.id,
+        affiliateId: await generateUniqueAffiliateId(tx),
+        referredByVendorId: partner.id,
+        referralCodeUsed: partner.vendorReferralCode,
+        company,
+        primaryContactName: input.name,
+        primaryContactEmail: input.email,
+        phone: input.phone ?? "",
+        country: "",
+        status: PartnerAccountStatus.ACTIVE,
+        activatedAt: new Date(),
+        profile: {
+          create: {
+            promotionChannels: input.socialProfiles ?? "",
+            aiTechExperience: "",
+            audienceDescription: input.notes ?? ""
+          }
+        }
+      }
+    });
+
+    if (input.notes?.trim()) {
+      await tx.internalNote.create({
+        data: {
+          entityType: "PARTNER",
+          entityId: affiliate.id,
+          body: input.notes.trim(),
+          authorId: input.actorUserId,
+          partnerAccountId: affiliate.id
+        }
+      });
+    }
+
+    await createAuditLog(tx, {
+      actorUserId: input.actorUserId,
+      entityType: "PartnerAccount",
+      entityId: affiliate.id,
+      action: "affiliate.created_by_partner",
+      summary: `${input.name} was added as an affiliate.`,
+      nextState: {
+        affiliateId: affiliate.affiliateId,
+        referredByVendorId: partner.id,
+        status: affiliate.status
+      }
+    });
+
+    return affiliate;
   });
 }
 

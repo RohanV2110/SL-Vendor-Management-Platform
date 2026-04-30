@@ -1,7 +1,7 @@
 "use client";
 
-import { useActionState, useState } from "react";
-import { submitApplicationAction } from "@/lib/actions";
+import { useActionState, useState, useTransition } from "react";
+import { checkApplicationEmailAction, submitApplicationAction } from "@/lib/actions";
 import { SubmitButton } from "@/components/submit-button";
 
 type ProductOption = {
@@ -24,6 +24,7 @@ type ApplyFormProps = {
 export function ApplyForm({ products, prompts, referralCode }: ApplyFormProps) {
   const [step, setStep] = useState<1 | 2>(1);
   const [message, action] = useActionState(submitApplicationAction, undefined);
+  const [checkingEmail, startEmailCheckTransition] = useTransition();
   const [registration, setRegistration] = useState({
     fullName: "",
     email: "",
@@ -39,6 +40,11 @@ export function ApplyForm({ products, prompts, referralCode }: ApplyFormProps) {
     tiktok: "",
     website: ""
   });
+  const hiddenHelperText = [
+    "Tell us what makes this program a fit.",
+    "Explain the angle or messaging you would lead with.",
+    "Share concrete experience and outcomes."
+  ];
 
   function continueToQuestions() {
     if (!registration.fullName.trim()) {
@@ -61,8 +67,16 @@ export function ApplyForm({ products, prompts, referralCode }: ApplyFormProps) {
       return;
     }
 
-    setRegistrationError(undefined);
-    setStep(2);
+    startEmailCheckTransition(async () => {
+      const duplicateMessage = await checkApplicationEmailAction(registration.email);
+      if (duplicateMessage) {
+        setRegistrationError(duplicateMessage);
+        return;
+      }
+
+      setRegistrationError(undefined);
+      setStep(2);
+    });
   }
 
   return (
@@ -122,14 +136,14 @@ export function ApplyForm({ products, prompts, referralCode }: ApplyFormProps) {
           </div>
           {referralCode ? (
             <div className="note">
-              <strong>Vendor referral code applied</strong>
+              <strong>Partner referral code applied</strong>
               <p className="muted">{referralCode}</p>
             </div>
           ) : null}
           {registrationError ? <p className="form-message">{registrationError}</p> : null}
           <div className="button-row">
-            <button className="button" type="button" onClick={continueToQuestions}>
-              Continue to questions
+            <button className="button" type="button" onClick={continueToQuestions} disabled={checkingEmail}>
+              {checkingEmail ? "Checking..." : "Continue to questions"}
             </button>
           </div>
         </div>
@@ -147,7 +161,10 @@ export function ApplyForm({ products, prompts, referralCode }: ApplyFormProps) {
               .map(([platform, value]) => `${platform}: ${value.trim()}`)
               .join("\n")}
           />
-          <div className="inline-form" style={{ justifyContent: "space-between" }}>
+          <input type="hidden" name="productId" value={products[0]?.id ?? ""} />
+          <input type="hidden" name="aiTechExperience" value="" />
+          <input type="hidden" name="audienceDescription" value="" />
+          <div className="inline-form apply-step-header" style={{ justifyContent: "space-between" }}>
             <div>
               <p className="eyebrow">Step 2</p>
               <h2>Tell us about your fit</h2>
@@ -169,17 +186,6 @@ export function ApplyForm({ products, prompts, referralCode }: ApplyFormProps) {
             <label className="field">
               <span>Country</span>
               <input className="input" name="country" />
-            </label>
-            <label className="field">
-              <span>Product</span>
-              <select className="select" name="productId" defaultValue="">
-                <option value="">Select later</option>
-                {products.map((product) => (
-                  <option key={product.id} value={product.id}>
-                    {product.name}
-                  </option>
-                ))}
-              </select>
             </label>
           </div>
           <div className="stack-md">
@@ -240,34 +246,24 @@ export function ApplyForm({ products, prompts, referralCode }: ApplyFormProps) {
               </label>
             </div>
           </div>
-          <div className="two-col">
-            <label className="field">
-              <span>Level of experience</span>
-              <select className="select" name="aiTechExperience" defaultValue="">
-                <option value="">Select your experience level</option>
-                <option value="Beginner">Beginner</option>
-                <option value="Intermediate">Intermediate</option>
-                <option value="Advanced">Advanced</option>
-                <option value="Expert">Expert</option>
-              </select>
-            </label>
-            <label className="field">
-              <span>Audience description</span>
-              <textarea className="textarea" name="audienceDescription" />
-            </label>
-          </div>
-          <div className="three-col">
-            {prompts.map((prompt) => (
-              <label key={prompt.id} className="field">
-                <input type="hidden" name="promptId" value={prompt.id} />
-                <span>{prompt.label}</span>
-                <textarea className="textarea" name={`answer_${prompt.id}`} />
-                {prompt.helperText ? <small className="muted">{prompt.helperText}</small> : null}
-              </label>
-            ))}
-          </div>
-          {message ? <p className="form-message">{message}</p> : null}
-          <SubmitButton label="Create account and submit application" pendingLabel="Submitting..." />
+          {prompts.length ? (
+            <div className="apply-questions">
+              {prompts.map((prompt) => (
+                <label key={prompt.id} className="field">
+                  <input type="hidden" name="promptId" value={prompt.id} />
+                  <span>{prompt.label}</span>
+                  <textarea className="textarea" name={`answer_${prompt.id}`} />
+                  {prompt.helperText && !hiddenHelperText.includes(prompt.helperText) ? (
+                    <small className="muted">{prompt.helperText}</small>
+                  ) : null}
+                </label>
+              ))}
+            </div>
+          ) : null}
+          {message ? (
+            <p className={`form-message${message.includes("already exists") ? " form-message-error" : ""}`}>{message}</p>
+          ) : null}
+          <SubmitButton label="Submit" pendingLabel="Submitting..." />
         </div>
       )}
     </form>

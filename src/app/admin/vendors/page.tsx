@@ -1,8 +1,6 @@
 import Link from "next/link";
-import { DealStage } from "@prisma/client";
 import { SectionCard } from "@/components/section-card";
 import { prisma } from "@/lib/prisma";
-import { formatCurrency } from "@/lib/utils";
 
 type AdminVendorsPageProps = {
   searchParams?: Promise<{
@@ -31,16 +29,13 @@ export default async function AdminVendorsPage({ searchParams }: AdminVendorsPag
   const [vendors, vendorCount] = await Promise.all([
     prisma.partnerAccount.findMany({
       where,
-      include: {
-        affiliates: {
-          include: {
-            deals: {
-              select: {
-                stage: true,
-                closedValue: true
-              }
-            }
-          }
+      select: {
+        id: true,
+        company: true,
+        primaryContactName: true,
+        primaryContactEmail: true,
+        _count: {
+          select: { affiliates: true }
         }
       },
       orderBy: { createdAt: "desc" },
@@ -59,67 +54,54 @@ export default async function AdminVendorsPage({ searchParams }: AdminVendorsPag
   };
 
   return (
-    <SectionCard title="Vendors" eyebrow="Referral-code owners">
+    <SectionCard title="Vendors" eyebrow="Vendor affiliate management">
       <div className="stack-lg">
-        <form className="inline-form">
-          <input className="input" name="q" placeholder="Search vendors by name, email, or code" defaultValue={q} />
+        <form className="filters-bar">
+          <label className="filter-field filter-field-wide">
+            <span>Search</span>
+            <input className="input" name="q" placeholder="Search vendor name, email, or code" defaultValue={q} />
+          </label>
           <button className="button button-secondary" type="submit">
             Search
           </button>
         </form>
+
         <div className="table-wrap">
           <table>
             <thead>
               <tr>
                 <th>Vendor Name</th>
                 <th>Email</th>
-                <th>Referral Code</th>
                 <th>Total Affiliates</th>
-                <th>Total Performance</th>
                 <th>Affiliates</th>
               </tr>
             </thead>
             <tbody>
-              {vendors.map((vendor) => {
-                const conversions = vendor.affiliates.reduce(
-                  (sum, affiliate) => sum + affiliate.deals.filter((deal) => deal.stage === DealStage.CLOSED_WON).length,
-                  0
-                );
-                const revenue = vendor.affiliates.reduce(
-                  (sum, affiliate) =>
-                    sum + affiliate.deals.reduce((affiliateSum, deal) => affiliateSum + Number(deal.closedValue ?? 0), 0),
-                  0
-                );
-
-                return (
-                  <tr key={vendor.id}>
-                    <td>
-                      <strong>{vendor.company || vendor.primaryContactName}</strong>
-                      <br />
-                      <span className="muted">{vendor.primaryContactName}</span>
-                    </td>
-                    <td>{vendor.primaryContactEmail}</td>
-                    <td>{vendor.vendorReferralCode ?? "Not generated"}</td>
-                    <td>{vendor.affiliates.length}</td>
-                    <td>
-                      {conversions} conversions · {formatCurrency(revenue)}
-                    </td>
-                    <td>
-                      <Link className="button button-secondary table-action-button" href={`/admin/vendors/${vendor.id}/affiliates`}>
-                        View Affiliates
-                      </Link>
-                    </td>
-                  </tr>
-                );
-              })}
+              {vendors.map((vendor) => (
+                <tr key={vendor.id}>
+                  <td>
+                    <strong>{vendor.company || vendor.primaryContactName}</strong>
+                    <br />
+                    <span className="muted">{vendor.primaryContactName}</span>
+                  </td>
+                  <td>{vendor.primaryContactEmail}</td>
+                  <td>{vendor._count.affiliates}</td>
+                  <td>
+                    <Link className="button button-secondary table-action-button" href={`/admin/vendors/${vendor.id}/affiliates`}>
+                      View Affiliates
+                    </Link>
+                  </td>
+                </tr>
+              ))}
               {!vendors.length ? (
                 <tr>
-                  <td colSpan={6}>No vendors found.</td>
+                  <td colSpan={4}>No vendors found.</td>
                 </tr>
               ) : null}
             </tbody>
           </table>
         </div>
+
         <div className="inline-form" style={{ justifyContent: "space-between" }}>
           <span className="muted">
             Page {page} of {pageCount}

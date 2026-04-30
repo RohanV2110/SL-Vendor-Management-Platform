@@ -14,13 +14,13 @@ export default async function ApplyPage({ searchParams }: ApplyPageProps) {
 
   return (
     <main className="landing">
-      <section className="hero stack-lg">
-        <div>
+      <section className="hero apply-hero stack-lg">
+        <div className="apply-intro">
           <p className="eyebrow">Partner Application</p>
-          <h1>Join the Sugar &amp; Leather AI partner network.</h1>
+          <h1 className="apply-title">Join the Sugar &amp; Leather AI partner network.</h1>
           <p className="lead">
-            Create your login first, then complete the partner application. Admin review,
-            NDA/agreement handling, and activation still happen inside the platform.
+            Create your login, then complete your partner application.
+            We will review and activate your account after approval.
           </p>
         </div>
         <ApplyForm

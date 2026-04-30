@@ -1,115 +1,141 @@
+import Link from "next/link";
+import { redirect } from "next/navigation";
 import { SectionCard } from "@/components/section-card";
-import { StatusBadge } from "@/components/status-badge";
+import { VendorReferralCard } from "@/components/vendor-referral-card";
+import { requirePartnerAccountId } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
-import { requireRole } from "@/lib/auth-helpers";
-import { CommissionLedgerStatus } from "@prisma/client";
-import { formatCurrency, formatDateTime } from "@/lib/utils";
+import { formatDateTime } from "@/lib/utils";
 
 export default async function PartnerDashboardPage() {
-  const user = await requireRole("PARTNER");
-  const partnerId = user.partnerAccountId!;
+  const partnerId = await requirePartnerAccountId();
+  const sevenDaysAgo = new Date(Date.now() - 1000 * 60 * 60 * 24 * 7);
+  const thirtyDaysAgo = new Date(Date.now() - 1000 * 60 * 60 * 24 * 30);
 
-  const [partner, referrals, deals, ledger, notifications] = await Promise.all([
-    prisma.partnerAccount.findUniqueOrThrow({
-      where: { id: partnerId },
-      select: {
-        status: true,
-        stripeOnboardingComplete: true
-      }
-    }),
-    prisma.referral.findMany({
-      where: { partnerAccountId: partnerId },
-      orderBy: { submittedAt: "desc" },
-      take: 5
-    }),
-    prisma.deal.findMany({
-      where: { partnerAccountId: partnerId },
-      orderBy: { updatedAt: "desc" },
-      take: 5,
-      include: { referral: true }
-    }),
-    prisma.commissionLedgerEntry.aggregate({
-      where: {
-        partnerAccountId: partnerId,
-        status: { not: CommissionLedgerStatus.VOID }
-      },
-      _sum: { amount: true }
-    }),
-    prisma.notification.findMany({
-      where: { partnerAccountId: partnerId },
-      orderBy: { createdAt: "desc" },
-      take: 6
-    })
-  ]);
+  const [partner, totalAffiliates, newAffiliates7, newAffiliates30, recentAffiliates] =
+    await Promise.all([
+      prisma.partnerAccount.findUnique({
+        where: { id: partnerId },
+        select: {
+          id: true,
+          vendorReferralCode: true,
+          vendorReferralCodeActive: true,
+          stripeOnboardingComplete: true
+        }
+      }),
+      prisma.partnerAccount.count({ where: { referredByVendorId: partnerId } }),
+      prisma.partnerAccount.count({
+        where: {
+          referredByVendorId: partnerId,
+          createdAt: { gte: sevenDaysAgo }
+        }
+      }),
+      prisma.partnerAccount.count({
+        where: {
+          referredByVendorId: partnerId,
+          createdAt: { gte: thirtyDaysAgo }
+        }
+      }),
+      prisma.partnerAccount.findMany({
+        where: { referredByVendorId: partnerId },
+        select: {
+          id: true,
+          affiliateId: true,
+          primaryContactName: true,
+          primaryContactEmail: true,
+          createdAt: true,
+          status: true
+        },
+        orderBy: { createdAt: "desc" },
+        take: 5
+      })
+    ]);
+
+  if (!partner) {
+    redirect("/apply");
+  }
 
   return (
     <div className="stack-lg">
+      <section className="dashboard-hero">
+        <div>
+          <p className="eyebrow">Partner Dashboard</p>
+          <h1>Referral growth overview</h1>
+          <p className="lead">
+            Generate Aries AI referral links, view linked affiliates, and monitor partner activity.
+          </p>
+        </div>
+        <Link className="button" href="/partner/affiliates">
+          View Affiliates
+        </Link>
+      </section>
+
       <div className="stats-grid">
         <div className="stat">
-          <span className="muted">Status</span>
-          <strong>{partner.status.replaceAll("_", " ")}</strong>
+          <span className="muted">Total Affiliates</span>
+          <strong>{totalAffiliates}</strong>
         </div>
         <div className="stat">
-          <span className="muted">Referrals</span>
-          <strong>{referrals.length}</strong>
+          <span className="muted">New Affiliates</span>
+          <strong>{newAffiliates7}</strong>
+          <small className="muted">Last 7 days</small>
         </div>
         <div className="stat">
-          <span className="muted">Tracked earnings</span>
-          <strong>{formatCurrency(ledger._sum.amount?.toString() ?? 0)}</strong>
+          <span className="muted">30 Day Growth</span>
+          <strong>{newAffiliates30}</strong>
         </div>
         <div className="stat">
-          <span className="muted">Stripe onboarding</span>
-          <strong>{partner.stripeOnboardingComplete ? "Complete" : "Pending"}</strong>
+          <span className="muted">Payout</span>
+          <strong>{partner.stripeOnboardingComplete ? "Ready" : "Pending"}</strong>
         </div>
       </div>
 
-      <div className="two-col">
-        <SectionCard title="Referral status" eyebrow="Latest submissions">
-          <div className="stack-md">
-            {referrals.map((referral) => (
-              <div className="note" key={referral.id}>
-                <div className="inline-form" style={{ justifyContent: "space-between" }}>
-                  <strong>{referral.referredCompany}</strong>
-                  <StatusBadge value={referral.status} />
-                </div>
-                <p className="muted">{referral.useCaseSummary}</p>
-              </div>
-            ))}
-          </div>
-        </SectionCard>
+      <div className="stack-lg">
+        <VendorReferralCard
+          partnerAccountId={partner.id}
+          vendorReferralCode={partner.vendorReferralCode}
+          vendorReferralCodeActive={partner.vendorReferralCodeActive}
+        />
 
-        <SectionCard title="Deal tracking" eyebrow="Admin-managed pipeline">
-          <div className="stack-md">
-            {deals.length ? (
-              deals.map((deal) => (
-                <div className="note" key={deal.id}>
-                  <div className="inline-form" style={{ justifyContent: "space-between" }}>
-                    <strong>{deal.referral.referredCompany}</strong>
-                    <StatusBadge value={deal.stage} />
-                  </div>
-                  <p className="muted">
-                    {deal.ownerName} · {formatCurrency(deal.closedValue?.toString() ?? deal.expectedValue?.toString() ?? 0)}
-                  </p>
-                </div>
-              ))
-            ) : (
-              <div className="empty-state">No deals linked to your referrals yet.</div>
-            )}
+        <SectionCard
+          title="Recent Affiliates"
+          eyebrow="Latest signups"
+          action={
+            <Link className="button button-secondary table-action-button" href="/partner/affiliates">
+              View All
+            </Link>
+          }
+        >
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Affiliate</th>
+                  <th>Email</th>
+                  <th>Joined</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recentAffiliates.map((affiliate) => (
+                  <tr key={affiliate.id}>
+                    <td>
+                      <strong>{affiliate.primaryContactName}</strong>
+                      <br />
+                      <span className="muted">{affiliate.affiliateId ?? affiliate.primaryContactEmail}</span>
+                    </td>
+                    <td>{affiliate.primaryContactEmail}</td>
+                    <td>{formatDateTime(affiliate.createdAt)}</td>
+                  </tr>
+                ))}
+                {!recentAffiliates.length ? (
+                  <tr>
+                    <td colSpan={3}>No affiliates yet. Generate your referral link and share it with your network.</td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
           </div>
         </SectionCard>
       </div>
-
-      <SectionCard title="Notifications" eyebrow="Workflow updates">
-        <div className="stack-md">
-          {notifications.map((notification) => (
-            <div className="note" key={notification.id}>
-              <strong>{notification.title}</strong>
-              <p className="muted">{notification.body}</p>
-              <span className="muted">{formatDateTime(notification.createdAt)}</span>
-            </div>
-          ))}
-        </div>
-      </SectionCard>
     </div>
   );
 }

@@ -15,12 +15,12 @@ export default async function HomePage() {
 
   return (
     <main className="landing">
-      <section className="hero stack-lg">
+      <section className="hero home-hero stack-lg">
         <div className="hero-grid">
           <div className="stack-lg">
-            <div>
+            <div className="landing-intro">
               <p className="eyebrow">Internal Partner Management</p>
-              <h1>Partner operations for Aries AI, built to expand with future products.</h1>
+              <h1 className="landing-title">Partner operations for Aries AI, built to expand with future products.</h1>
               <p className="lead">
                 Sugar &amp; Leather AI now has a single workspace for partner onboarding, referral
                 attribution, agreement gating, commission tracking, payout staging, and quarterly
@@ -37,7 +37,7 @@ export default async function HomePage() {
             </div>
           </div>
           <div className="panel">
-            <div className="panel-body stats-grid">
+            <div className="panel-body landing-stats-grid">
               <div className="stat">
                 <span className="muted">Applications</span>
                 <strong>{applications}</strong>
@@ -51,7 +51,7 @@ export default async function HomePage() {
                 <strong>{formatCurrency(commissions._sum.amount?.toString() ?? 0)}</strong>
               </div>
               <div className="stat">
-                <span className="muted">Programs</span>
+                <span className="muted">Platform</span>
                 <strong>Aries AI</strong>
               </div>
             </div>

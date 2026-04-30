@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { LoginForm } from "@/components/forms/login-form";
 
 export default async function LoginPage({
@@ -12,16 +11,12 @@ export default async function LoginPage({
 
   return (
     <main className="landing">
-      <section className="hero" style={{ maxWidth: 520 }}>
+      <section className="hero login-hero" style={{ maxWidth: 520 }}>
         <div className="stack-lg">
-          <div>
+          <div className="login-intro">
             <p className="eyebrow">Sign in</p>
-            <h1>Access the partner platform.</h1>
-            <p className="lead">
-              Admins and approved partners use the same credentials-based login. New partner users
-              should apply first, create their password during application, then log in to track
-              onboarding.
-            </p>
+            <h1 className="login-title">Access the partner platform.</h1>
+            <p className="lead">Sign in to continue. New here? Register first.</p>
           </div>
           {applied ? (
             <p className="note">
@@ -30,11 +25,6 @@ export default async function LoginPage({
             </p>
           ) : null}
           <LoginForm redirectTo={redirectTo} />
-          <div className="button-row">
-            <Link className="button button-secondary" href="/apply">
-              Apply as a partner
-            </Link>
-          </div>
         </div>
       </section>
     </main>
