@@ -9,13 +9,16 @@ services:
       NODE_ENV: production
       PORT: 3000
       HOSTNAME: 0.0.0.0
-      DB_HOST: ${DB_HOST:-postgres}
-      DB_PORT: ${DB_PORT:-5432}
-      DB_USER: ${DB_USER:-postgres}
-      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      # Shared Postgres instance lives in the aries-app stack on the
+      # docker-stack network. VMS gets its own database (VMS_DB_NAME) inside
+      # that instance — separate database, same volume.
+      DB_HOST: ${VMS_DB_HOST:-postgres}
+      DB_PORT: ${VMS_DB_PORT:-5432}
+      DB_USER: ${VMS_DB_USER:?VMS_DB_USER is required}
+      DB_PASSWORD: ${VMS_DB_PASSWORD:?VMS_DB_PASSWORD is required}
       DB_NAME: ${VMS_DB_NAME:-sugarleather_vms}
       DB_SCHEMA: ${VMS_DB_SCHEMA:-public}
-      POSTGRES_ADMIN_DB: ${POSTGRES_ADMIN_DB:-postgres}
+      POSTGRES_ADMIN_DB: ${VMS_POSTGRES_ADMIN_DB:-postgres}
       DATABASE_URL: ${VMS_DATABASE_URL:-}
       NEXTAUTH_URL: ${VMS_NEXTAUTH_URL:-http://localhost:3001}
       NEXTAUTH_SECRET: ${VMS_NEXTAUTH_SECRET:-replace-this-secret-before-production}
