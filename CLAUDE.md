@@ -31,7 +31,7 @@ Next.js 15 App Router + Prisma 6 (Postgres) + NextAuth (Credentials, JWT) + Stri
 - **`src/lib/services/platform.ts`** — single module owning all multi-step business logic and Prisma transactions: applications, partner activation, agreements + documents, referrals, deals, commission ledger, payout batches, quarterly snapshots, Stripe Connect onboarding, audit log + notification fan-out. Most functions take an `actorUserId` and write an `AuditLog` row in the same transaction as the mutation.
 - **`src/lib/rules.ts`** + **`src/lib/utils.ts`** — pure helpers (commission math, first-attribution check, quarterly threshold evaluation, `normalizeLeadKey`, currency/date formatting). These are the unit-tested core; keep them framework-free.
 - **`src/lib/auth.ts`** + **`src/lib/auth-helpers.ts`** — NextAuth options and `requireUser` / `requireRole(role)` / `requirePartnerAccountId()` redirect-based guards used by every protected surface.
-- **`src/lib/{prisma,email,stripe,storage,env,referral-links}.ts`** — singletons and adapters. `env.ts` only warns on missing vars. Stripe no-ops to a stub account when `STRIPE_SECRET_KEY` is absent (`src/lib/stripe.ts`); email always stubs to a `console.log` regardless of env.
+- **`src/lib/{prisma,email,stripe,storage,env,referral-links}.ts`** — singletons and adapters. `env.ts` only warns on missing vars. Stripe no-ops to a stub account when `STRIPE_SECRET_KEY` is absent (`src/lib/stripe.ts`); Stripe server actions (`startStripeOnboardingAction`, `confirmStripeOnboardingAction`) also enforce this guard — calls without the key return an error instead of writing stub data. Email always stubs to a `console.log` regardless of env.
 
 ### Domain model (`prisma/schema.prisma`)
 
@@ -57,7 +57,9 @@ Cross-cutting: `AuditLog`, `Notification`, `InternalNote` (polymorphic via `Note
 
 ### Environment
 
-Required: `DATABASE_URL`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL`. Optional / feature-gating: `STRIPE_SECRET_KEY` + `STRIPE_CONNECT_{REFRESH,RETURN}_URL` (payouts), `APP_BASE_URL`, `UPLOAD_DIR`. `RESEND_API_KEY` and `RESEND_FROM_EMAIL` are read into `env.ts` but currently unused — email is stubbed. See `.env.example`.
+Required: `DATABASE_URL`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL`. Optional / feature-gating: `STRIPE_SECRET_KEY` + `STRIPE_CONNECT_{REFRESH,RETURN}_URL` (payouts — server actions block without this key), `APP_BASE_URL`, `UPLOAD_DIR`. `RESEND_API_KEY` and `RESEND_FROM_EMAIL` are read into `env.ts` but currently unused — email is stubbed. See `.env.example`.
+
+**Docker-only required env vars:** `VMS_DB_USER`, `VMS_DB_PASSWORD`, and `VMS_NEXTAUTH_SECRET` must be set when running via `docker-compose.yml` — the container refuses to start without them. `VMS_DB_HOST` and `VMS_DB_PORT` default to `postgres:5432`.
 
 ### Testing
 
