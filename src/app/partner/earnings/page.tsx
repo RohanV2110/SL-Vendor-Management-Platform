@@ -4,6 +4,7 @@ import { SectionCard } from "@/components/section-card";
 import { StatusBadge } from "@/components/status-badge";
 import { SubmitButton } from "@/components/submit-button";
 import { requirePartnerAccountId } from "@/lib/auth-helpers";
+import { env } from "@/lib/env";
 import { prisma } from "@/lib/prisma";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 
@@ -41,14 +42,20 @@ export default async function PartnerEarningsPage() {
             <span className="muted">{partner.stripeOnboardingComplete ? "Ready for payouts" : "Action required"}</span>
           </p>
           <div className="stack-md">
-            <form action={startStripeOnboardingAction}>
-              <SubmitButton label="Start Stripe onboarding" pendingLabel="Redirecting..." />
-            </form>
-            {!partner.stripeOnboardingComplete ? (
-              <form action={confirmStripeOnboardingAction}>
-                <SubmitButton className="button button-secondary" label="Mark onboarding complete" pendingLabel="Saving..." />
-              </form>
-            ) : null}
+            {env.stripeSecretKey ? (
+              <>
+                <form action={startStripeOnboardingAction}>
+                  <SubmitButton label="Start Stripe onboarding" pendingLabel="Redirecting..." />
+                </form>
+                {!partner.stripeOnboardingComplete ? (
+                  <form action={confirmStripeOnboardingAction}>
+                    <SubmitButton className="button button-secondary" label="Mark onboarding complete" pendingLabel="Saving..." />
+                  </form>
+                ) : null}
+              </>
+            ) : (
+              <p className="muted">Stripe Connect is not yet configured for this platform. Payout setup will become available once Stripe is enabled.</p>
+            )}
           </div>
         </div>
       </SectionCard>
