@@ -76,7 +76,7 @@ Vitest with `jsdom` and the `@/*` alias (`vitest.config.ts`). `tests/setup.ts` i
 
 ### Custom deploy hooks
 - Pre-merge: `npm run build` (runs `prisma generate && next build`); `npm run test`
-- Deploy trigger: GitHub Actions workflow on push to `main` (workflow file pending)
+- Deploy trigger: GitHub Actions workflow on push to `main` (`.github/workflows/deploy.yml`)
 - Deploy status: `gh run watch` on the deploy workflow run, then HTTP probe of production URL
 - Health check: `https://portal.sugarandleather.com/`
 - Container entrypoint: `scripts/docker-init-and-start.sh` waits for Postgres, runs `prisma db push`, then `npm run start`. Any deploy must run this entrypoint or replicate its steps.

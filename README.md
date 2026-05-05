@@ -27,3 +27,18 @@ docker compose exec vms-app npm run prisma:seed
 ```
 
 For production, replace `NEXTAUTH_SECRET`, email, and Stripe values in `docker-compose.yml` or provide them through your deployment secret manager.
+
+## Production Deployment
+
+Pushes to `main` trigger the GitHub Actions workflow at `.github/workflows/deploy.yml`, which:
+
+1. Runs tests (`npm test` + Prisma client generation)
+2. Builds and pushes a Docker image to GHCR (`ghcr.io/rohanv2110/sl-vendor-management-platform`)
+3. SSH-deploys to `34.46.98.30` by pulling the new image and restarting `vms-app` via `docker compose up -d --no-build`
+4. Polls `https://portal.sugarandleather.com/` until it responds (up to 150s)
+
+**Required setup:**
+- Add a `DEPLOY_SSH_KEY` secret to the repository (ed25519 private key; public half must be in `~/.ssh/authorized_keys` on the server)
+- The server must have the repo checked out at `/home/node/docker-stack/SL-Vendor-Management-Platform`
+
+Check deploy status: `gh run list --workflow=deploy.yml --limit=1`
