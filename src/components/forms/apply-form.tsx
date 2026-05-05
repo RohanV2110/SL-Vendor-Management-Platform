@@ -57,6 +57,12 @@ export function ApplyForm({ products, prompts, referralCode }: ApplyFormProps) {
       return;
     }
 
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(registration.email.trim())) {
+      setRegistrationError("Please enter a valid email address.");
+      return;
+    }
+
     if (registration.password.length < 8) {
       setRegistrationError("Password must be at least 8 characters.");
       return;
