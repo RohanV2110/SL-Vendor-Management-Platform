@@ -1,0 +1,119 @@
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: rohanv2110/sl-vendor-management-platform
+  DEPLOY_HOST: 34.46.98.30
+  DEPLOY_USER: node
+  DEPLOY_PATH: /home/node/docker-stack/SL-Vendor-Management-Platform
+  PROD_URL: https://portal.sugarandleather.com
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Tests
+        run: npm test
+
+  deploy:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read app version
+        id: ver
+        run: echo "version=$(cat VERSION 2>/dev/null || echo 0.0.0.0)" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:v${{ steps.ver.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Setup SSH agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+
+      - name: Trust deploy host
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Deploy to server
+        env:
+          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+        run: |
+          ssh "$DEPLOY_USER@$DEPLOY_HOST" bash -s <<EOF
+            set -euo pipefail
+            cd "$DEPLOY_PATH"
+            echo "[deploy] Updating checkout"
+            git fetch --quiet origin main
+            git pull --ff-only origin main
+            echo "[deploy] Pulling image: $IMAGE"
+            docker pull "$IMAGE"
+            echo "[deploy] Restarting vms-app"
+            export VMS_APP_IMAGE="$IMAGE"
+            docker compose up -d --no-build vms-app
+            echo "[deploy] Pruning old images"
+            docker image prune -f
+          EOF
+
+      - name: Health check
+        run: |
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$PROD_URL/" || echo 000)
+            if [ "$code" = "200" ] || [ "$code" = "302" ] || [ "$code" = "307" ]; then
+              echo "Production responding (HTTP $code) after $((i*5))s"
+              exit 0
+            fi
+            echo "Waiting for $PROD_URL ... attempt $i/30 (HTTP $code)"
+            sleep 5
+          done
+          echo "Production failed health check after 150s"
+          exit 1

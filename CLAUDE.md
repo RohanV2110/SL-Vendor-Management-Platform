@@ -62,3 +62,21 @@ Required: `DATABASE_URL`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL`. Optional / feature-
 ### Testing
 
 Vitest with `jsdom` and the `@/*` alias (`vitest.config.ts`). `tests/setup.ts` is a stub. Existing coverage is limited to pure rule helpers in `tests/rules.test.ts` — there is no DB or component test harness yet.
+
+## Deploy Configuration (configured by /setup-deploy)
+- Platform: GitHub Actions (build container image + SSH deploy)
+- Production URL: https://portal.sugarandleather.com
+- Deploy workflow: `.github/workflows/deploy.yml` (test → build & push to GHCR → SSH deploy to `node@34.46.98.30:/home/node/docker-stack/SL-Vendor-Management-Platform` → health check)
+- Image registry: `ghcr.io/rohanv2110/sl-vendor-management-platform` (tags: `latest`, `sha-<commit>`, `v<VERSION>`)
+- Deploy status command: `gh run list --workflow=deploy.yml --limit=1`
+- Required repo secret: `DEPLOY_SSH_KEY` (private ed25519 key whose public half is in `node@34.46.98.30:~/.ssh/authorized_keys`)
+- Merge method: squash
+- Project type: web app (Next.js 15 + Prisma, containerized via Dockerfile + docker-compose)
+- Post-deploy health check: `curl -fsS https://portal.sugarandleather.com/ -o /dev/null` (probe was unreachable from this sandbox at setup time — verify from a network with access)
+
+### Custom deploy hooks
+- Pre-merge: `npm run build` (runs `prisma generate && next build`); `npm run test`
+- Deploy trigger: GitHub Actions workflow on push to `main` (`.github/workflows/deploy.yml`)
+- Deploy status: `gh run watch` on the deploy workflow run, then HTTP probe of production URL
+- Health check: `https://portal.sugarandleather.com/`
+- Container entrypoint: `scripts/docker-init-and-start.sh` waits for Postgres, runs `prisma db push`, then `npm run start`. Any deploy must run this entrypoint or replicate its steps.
