@@ -27,6 +27,7 @@ import {
   uploadPartnerDocument,
   verifyPartnerDocument
 } from "@/lib/services/platform";
+import { env } from "@/lib/env";
 import { slugify } from "@/lib/utils";
 import {
   applicationSchema,
@@ -363,12 +364,14 @@ export async function createClawbackAction(formData: FormData) {
 }
 
 export async function startStripeOnboardingAction() {
+  if (!env.stripeSecretKey) throw new Error("Stripe Connect is not configured.");
   const partnerAccountId = await requirePartnerAccountId();
   const link = await getStripeOnboardingLink(partnerAccountId);
   redirect(link.url);
 }
 
 export async function confirmStripeOnboardingAction() {
+  if (!env.stripeSecretKey) throw new Error("Stripe Connect is not configured.");
   const partnerAccountId = await requirePartnerAccountId();
   await markStripeOnboardingComplete(partnerAccountId);
   await refreshQuarterlyActivity(partnerAccountId);

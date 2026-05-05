@@ -21,7 +21,7 @@ services:
       POSTGRES_ADMIN_DB: ${VMS_POSTGRES_ADMIN_DB:-postgres}
       DATABASE_URL: ${VMS_DATABASE_URL:-}
       NEXTAUTH_URL: ${VMS_NEXTAUTH_URL:-http://localhost:3001}
-      NEXTAUTH_SECRET: ${VMS_NEXTAUTH_SECRET:-replace-this-secret-before-production}
+      NEXTAUTH_SECRET: ${VMS_NEXTAUTH_SECRET:?VMS_NEXTAUTH_SECRET is required}
       APP_BASE_URL: ${VMS_APP_BASE_URL:-http://localhost:3001}
       UPLOAD_DIR: /app/uploads
       RESEND_API_KEY: ${RESEND_API_KEY:-}
