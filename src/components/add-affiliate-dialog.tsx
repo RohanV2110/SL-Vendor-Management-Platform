@@ -122,13 +122,13 @@ export function AddAffiliateDialog() {
                   </label>
                   <label className="field">
                     <span>Mobile number (optional)</span>
-                    <div className="inline-form">
+                    <div className="phone-row">
                       <select
-                        className="select"
+                        className="select phone-row__code"
                         name="phoneCountryCode"
                         value={dialCode}
                         onChange={(event) => setDialCode(event.target.value)}
-                        style={{ maxWidth: 130 }}
+                        aria-label="Country code"
                       >
                         <option value="">Code</option>
                         {dialOptions.map((option) => (
@@ -138,7 +138,7 @@ export function AddAffiliateDialog() {
                         ))}
                       </select>
                       <input
-                        className="input"
+                        className="input phone-row__number"
                         name="phoneNumber"
                         type="tel"
                         inputMode="numeric"
