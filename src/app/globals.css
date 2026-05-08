@@ -409,6 +409,14 @@ h3 {
   max-height: calc(100vh - 170px);
   overflow: auto;
   padding: 20px;
+  text-align: left;
+}
+
+.dialog-content .note,
+.dialog-content p,
+.dialog-content strong,
+.dialog-content span {
+  text-align: left;
 }
 
 .button-row {
