@@ -1887,3 +1887,110 @@ export async function createTierWithRule(input: {
     }
   });
 }
+
+export async function recordAriesAffiliateSignup(input: {
+  refCode: string;
+  name: string;
+  email: string;
+  company?: string | null;
+  domain?: string | null;
+  packageSlug?: string | null;
+  notes?: string | null;
+}) {
+  const refCode = input.refCode.trim();
+  if (!refCode) {
+    throw new Error("Missing referral code.");
+  }
+
+  const partner = await prisma.partnerAccount.findUnique({
+    where: { vendorReferralCode: refCode }
+  });
+
+  if (!partner || !partner.vendorReferralCodeActive) {
+    throw new Error("Referral code not recognized.");
+  }
+
+  if (partner.status !== PartnerAccountStatus.ACTIVE) {
+    throw new Error("Partner is not active.");
+  }
+
+  const normalizedEmail = input.email.trim().toLowerCase();
+
+  if (partner.primaryContactEmail.toLowerCase() === normalizedEmail) {
+    throw new Error("Self-referrals are not allowed.");
+  }
+
+  const product = await prisma.product.findUnique({ where: { slug: "aries-ai" } });
+  if (!product) {
+    throw new Error("Aries product not configured.");
+  }
+
+  const pkg = input.packageSlug
+    ? await prisma.package.findFirst({
+        where: { productId: product.id, slug: input.packageSlug }
+      })
+    : null;
+
+  const company = (input.company?.trim() || input.name.trim());
+  const normalizedKey = normalizeLeadKey({
+    company,
+    email: input.email,
+    domain: input.domain ?? null
+  });
+
+  return prisma.$transaction(async (tx) => {
+    const existingForEmail = await tx.referral.findFirst({
+      where: { referredContactEmail: normalizedEmail },
+      orderBy: { createdAt: "asc" }
+    });
+
+    if (existingForEmail) {
+      return {
+        referral: existingForEmail,
+        partnerAccountId: existingForEmail.partnerAccountId,
+        alreadyRecorded: true as const
+      };
+    }
+
+    const existingAttributed = await tx.referral.findFirst({
+      where: { normalizedLeadKey: normalizedKey, isAttributed: true }
+    });
+
+    const decision = deriveReferralSubmissionStatus(Boolean(existingAttributed));
+
+    const referral = await tx.referral.create({
+      data: {
+        partnerAccountId: partner.id,
+        productId: product.id,
+        packageId: pkg?.id ?? null,
+        referredCompany: company,
+        referredContactName: input.name.trim(),
+        referredContactEmail: normalizedEmail,
+        referredDomain: input.domain?.trim().toLowerCase() ?? null,
+        normalizedLeadKey: normalizedKey,
+        sourceNotes: input.notes?.trim() || `Aries signup via referral link (${refCode})`,
+        useCaseSummary: "Aries affiliate signup",
+        isAttributed: decision.isAttributed,
+        status: decision.status
+      }
+    });
+
+    await createAuditLog(tx, {
+      entityType: "Referral",
+      entityId: referral.id,
+      action: "referral.aries_signup",
+      summary: `Aries signup ${input.email} attributed to ${partner.company}`,
+      nextState: { status: referral.status, refCode, normalizedLeadKey: normalizedKey }
+    });
+
+    await createPartnerNotification(
+      tx,
+      partner.id,
+      existingAttributed ? "Aries signup received as duplicate" : "New Aries signup via your referral link",
+      `${input.email} signed up using your referral code.`,
+      "/partner/referrals"
+    );
+
+    return { referral, partnerAccountId: partner.id, alreadyRecorded: false as const };
+  });
+}

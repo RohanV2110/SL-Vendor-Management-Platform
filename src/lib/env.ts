@@ -15,5 +15,6 @@ export const env = {
   stripeConnectRefreshUrl:
     process.env.STRIPE_CONNECT_REFRESH_URL ?? "http://localhost:3000/partner/dashboard",
   stripeConnectReturnUrl:
-    process.env.STRIPE_CONNECT_RETURN_URL ?? "http://localhost:3000/partner/dashboard"
+    process.env.STRIPE_CONNECT_RETURN_URL ?? "http://localhost:3000/partner/dashboard",
+  ariesWebhookSecret: process.env.ARIES_WEBHOOK_SECRET
 };
