@@ -11,6 +11,7 @@ import {
   createClawback,
   createCommissionEntry,
   createManualAffiliate,
+  DuplicateAffiliateEmailError,
   createPayoutBatch,
   createReferral,
   createTierWithRule,
@@ -152,7 +153,22 @@ export async function generateVendorReferralCodeAction(formData: FormData) {
   revalidatePath("/admin/vendors");
 }
 
-export async function createAffiliateAction(formData: FormData) {
+export type CreateAffiliateState = {
+  status: "idle" | "error" | "success";
+  error?: string;
+  fieldErrors?: Partial<{
+    name: string;
+    email: string;
+    phone: string;
+    country: string;
+    city: string;
+  }>;
+};
+
+export async function createAffiliateAction(
+  _prevState: CreateAffiliateState,
+  formData: FormData
+): Promise<CreateAffiliateState> {
   const user = await requireRole("PARTNER");
   const partnerAccountId = await requirePartnerAccountId();
   const socialFields = ["LinkedIn", "X / Twitter", "YouTube", "Instagram", "TikTok", "Website"];
@@ -166,26 +182,65 @@ export async function createAffiliateAction(formData: FormData) {
 
   const name = getRequiredString(formData, "name").trim();
   const email = getRequiredString(formData, "email").trim().toLowerCase();
+  const country = getOptionalString(formData, "country")?.trim() ?? "";
+  const city = getOptionalString(formData, "city")?.trim() ?? "";
+  const phoneCountryCode = getOptionalString(formData, "phoneCountryCode")?.trim() ?? "";
+  const phoneNumber = getOptionalString(formData, "phoneNumber")?.trim() ?? "";
 
-  if (!name || !email) {
-    throw new Error("Name and email are required.");
+  const fieldErrors: NonNullable<CreateAffiliateState["fieldErrors"]> = {};
+
+  if (!name) fieldErrors.name = "Name is required.";
+  if (!email) fieldErrors.email = "Email is required.";
+  if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    fieldErrors.email = "Enter a valid email address.";
+  }
+  if (!country) fieldErrors.country = "Select a country.";
+
+  let phone = "";
+  if (phoneNumber) {
+    const digits = phoneNumber.replace(/\D/g, "");
+    if (digits.length !== 10) {
+      fieldErrors.phone = "Mobile number must be exactly 10 digits.";
+    } else if (!phoneCountryCode) {
+      fieldErrors.phone = "Select a country code for the mobile number.";
+    } else {
+      phone = `${phoneCountryCode} ${digits}`;
+    }
   }
 
-  await createManualAffiliate({
-    partnerAccountId,
-    actorUserId: user.id,
-    name,
-    email,
-    company: getOptionalString(formData, "company")?.trim(),
-    phone: getOptionalString(formData, "phone")?.trim(),
-    socialProfiles,
-    notes: getOptionalString(formData, "notes")?.trim()
-  });
+  if (Object.keys(fieldErrors).length > 0) {
+    return { status: "error", fieldErrors };
+  }
+
+  try {
+    await createManualAffiliate({
+      partnerAccountId,
+      actorUserId: user.id,
+      name,
+      email,
+      company: getOptionalString(formData, "company")?.trim(),
+      phone: phone || undefined,
+      country,
+      city,
+      socialProfiles,
+      notes: getOptionalString(formData, "notes")?.trim()
+    });
+  } catch (error) {
+    if (error instanceof DuplicateAffiliateEmailError) {
+      return {
+        status: "error",
+        fieldErrors: { email: error.message }
+      };
+    }
+    const message = error instanceof Error ? error.message : "Failed to add affiliate.";
+    return { status: "error", error: message };
+  }
 
   revalidatePath("/partner/affiliates");
   revalidatePath("/partner/dashboard");
   revalidatePath("/partner/referrals");
-  revalidatePath("/admin/vendors");
+
+  return { status: "success" };
 }
 
 export async function reviewApplicationAction(formData: FormData) {

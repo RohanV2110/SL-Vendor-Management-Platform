@@ -229,6 +229,7 @@ model PartnerApplication {
   phone                 String
   company               String
   country               String
+  city                  String                   @default("")
   promotionChannels     String
   aiTechExperience      String
   audienceDescription   String
@@ -285,6 +286,7 @@ model PartnerAccount {
   primaryContactEmail       String                   @unique
   phone                     String
   country                   String
+  city                      String                   @default("")
   status                    PartnerAccountStatus     @default(INVITED)
   stripeAccountId           String?
   stripeOnboardingComplete  Boolean                  @default(false)

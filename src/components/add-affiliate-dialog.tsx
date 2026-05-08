@@ -1,13 +1,77 @@
 "use client";
 
-import { useState } from "react";
-import { createAffiliateAction } from "@/lib/actions";
-import { SubmitButton } from "@/components/submit-button";
+import { useEffect, useMemo, useState } from "react";
+import { useActionState } from "react";
+import { useFormStatus } from "react-dom";
+import { createAffiliateAction, type CreateAffiliateState } from "@/lib/actions";
+import { COUNTRIES, findCountryByName } from "@/lib/locations";
 
 const socialFields = ["LinkedIn", "X / Twitter", "YouTube", "Instagram", "TikTok", "Website"];
 
+const initialState: CreateAffiliateState = { status: "idle" };
+
+const dialOptions = (() => {
+  const seen = new Set<string>();
+  return COUNTRIES.flatMap((country) => {
+    const key = `${country.dialCode}-${country.iso}`;
+    if (seen.has(key)) return [];
+    seen.add(key);
+    return [
+      {
+        value: country.dialCode,
+        label: `${country.dialCode} (${country.iso})`
+      }
+    ];
+  }).sort((a, b) => a.label.localeCompare(b.label));
+})();
+
+function SubmitButton() {
+  const { pending } = useFormStatus();
+  return (
+    <button className="button" type="submit" disabled={pending}>
+      {pending ? "Adding..." : "Add"}
+    </button>
+  );
+}
+
 export function AddAffiliateDialog() {
   const [open, setOpen] = useState(false);
+  const [country, setCountry] = useState("");
+  const [city, setCity] = useState("");
+  const [dialCode, setDialCode] = useState("");
+  const [state, formAction] = useActionState(createAffiliateAction, initialState);
+
+  const cityOptions = useMemo(() => {
+    const entry = findCountryByName(country);
+    return entry?.cities ?? [];
+  }, [country]);
+
+  useEffect(() => {
+    if (state.status === "success") {
+      setOpen(false);
+      setCountry("");
+      setCity("");
+      setDialCode("");
+    }
+  }, [state.status]);
+
+  useEffect(() => {
+    if (cityOptions.length === 0) {
+      setCity("");
+      return;
+    }
+    if (!cityOptions.includes(city)) {
+      setCity("");
+    }
+  }, [cityOptions, city]);
+
+  function close() {
+    setOpen(false);
+  }
+
+  function getFieldError(field: keyof NonNullable<CreateAffiliateState["fieldErrors"]>) {
+    return state.fieldErrors?.[field];
+  }
 
   return (
     <>
@@ -15,35 +79,122 @@ export function AddAffiliateDialog() {
         Add Affiliate
       </button>
       {open ? (
-        <div className="dialog-backdrop" role="presentation">
-          <div className="dialog-panel add-affiliate-panel" role="dialog" aria-modal="true" aria-label="Add affiliate">
+        <div className="dialog-backdrop" role="presentation" onMouseDown={close}>
+          <div
+            className="dialog-panel add-affiliate-panel"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Add affiliate"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
             <div className="dialog-header">
               <div>
                 <p className="eyebrow">Affiliate</p>
                 <h2>Add affiliate</h2>
               </div>
-              <button className="icon-button" type="button" aria-label="Close" onClick={() => setOpen(false)}>
+              <button className="icon-button" type="button" aria-label="Close" onClick={close}>
                 ×
               </button>
             </div>
             <div className="dialog-content">
-              <form action={createAffiliateAction} className="stack-lg">
+              <form action={formAction} className="stack-lg">
+                {state.status === "error" && state.error ? (
+                  <div className="form-message" role="alert">
+                    {state.error}
+                  </div>
+                ) : null}
+
                 <div className="two-col">
                   <label className="field">
                     <span>Name</span>
                     <input className="input" name="name" required />
+                    {getFieldError("name") ? (
+                      <small className="form-message">{getFieldError("name")}</small>
+                    ) : null}
                   </label>
                   <label className="field">
                     <span>Email</span>
                     <input className="input" type="email" name="email" required />
+                    {getFieldError("email") ? (
+                      <small className="form-message">{getFieldError("email")}</small>
+                    ) : null}
                   </label>
                   <label className="field">
                     <span>Company name</span>
                     <input className="input" name="company" />
                   </label>
                   <label className="field">
-                    <span>Mobile number</span>
-                    <input className="input" name="phone" />
+                    <span>Mobile number (optional)</span>
+                    <div className="inline-form">
+                      <select
+                        className="select"
+                        name="phoneCountryCode"
+                        value={dialCode}
+                        onChange={(event) => setDialCode(event.target.value)}
+                        style={{ maxWidth: 130 }}
+                      >
+                        <option value="">Code</option>
+                        {dialOptions.map((option) => (
+                          <option key={option.label} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        className="input"
+                        name="phoneNumber"
+                        type="tel"
+                        inputMode="numeric"
+                        pattern="\d{10}"
+                        maxLength={10}
+                        placeholder="10-digit number"
+                      />
+                    </div>
+                    {getFieldError("phone") ? (
+                      <small className="form-message">{getFieldError("phone")}</small>
+                    ) : null}
+                  </label>
+                  <label className="field">
+                    <span>Country</span>
+                    <select
+                      className="select"
+                      name="country"
+                      value={country}
+                      onChange={(event) => setCountry(event.target.value)}
+                      required
+                    >
+                      <option value="">Select a country</option>
+                      {COUNTRIES.map((entry) => (
+                        <option key={entry.iso} value={entry.name}>
+                          {entry.name}
+                        </option>
+                      ))}
+                    </select>
+                    {getFieldError("country") ? (
+                      <small className="form-message">{getFieldError("country")}</small>
+                    ) : null}
+                  </label>
+                  <label className="field">
+                    <span>City</span>
+                    <select
+                      className="select"
+                      name="city"
+                      value={city}
+                      onChange={(event) => setCity(event.target.value)}
+                      disabled={cityOptions.length === 0}
+                    >
+                      <option value="">
+                        {cityOptions.length === 0 ? "Select a country first" : "Select a city"}
+                      </option>
+                      {cityOptions.map((cityName) => (
+                        <option key={cityName} value={cityName}>
+                          {cityName}
+                        </option>
+                      ))}
+                    </select>
+                    {getFieldError("city") ? (
+                      <small className="form-message">{getFieldError("city")}</small>
+                    ) : null}
                   </label>
                 </div>
 
@@ -67,8 +218,8 @@ export function AddAffiliateDialog() {
                 </label>
 
                 <div className="button-row">
-                  <SubmitButton label="Add" pendingLabel="Adding..." />
-                  <button className="button button-secondary" type="button" onClick={() => setOpen(false)}>
+                  <SubmitButton />
+                  <button className="button button-secondary" type="button" onClick={close}>
                     Cancel
                   </button>
                 </div>

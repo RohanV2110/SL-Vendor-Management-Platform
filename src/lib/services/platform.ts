@@ -572,6 +572,13 @@ export async function generateVendorReferralCode(input: { partnerAccountId: stri
   });
 }
 
+export class DuplicateAffiliateEmailError extends Error {
+  constructor(message = "An account with that email already exists.") {
+    super(message);
+    this.name = "DuplicateAffiliateEmailError";
+  }
+}
+
 export async function createManualAffiliate(input: {
   partnerAccountId: string;
   actorUserId: string;
@@ -579,6 +586,8 @@ export async function createManualAffiliate(input: {
   email: string;
   company?: string;
   phone?: string;
+  country?: string;
+  city?: string;
   socialProfiles?: string;
   notes?: string;
 }) {
@@ -607,7 +616,9 @@ export async function createManualAffiliate(input: {
     });
 
     if (existing) {
-      throw new Error("An affiliate with that email already exists.");
+      throw new DuplicateAffiliateEmailError(
+        "An account with that email already exists. Please use a different email."
+      );
     }
 
     const defaultTier =
@@ -625,13 +636,16 @@ export async function createManualAffiliate(input: {
     }
 
     const company = input.company?.trim() || input.name;
+    const country = input.country?.trim() ?? "";
+    const city = input.city?.trim() ?? "";
     const application = await tx.partnerApplication.create({
       data: {
         fullName: input.name,
         email: input.email,
         phone: input.phone ?? "",
         company,
-        country: "",
+        country,
+        city,
         promotionChannels: input.socialProfiles ?? "",
         aiTechExperience: "",
         audienceDescription: input.notes ?? "",
@@ -654,7 +668,8 @@ export async function createManualAffiliate(input: {
         primaryContactName: input.name,
         primaryContactEmail: input.email,
         phone: input.phone ?? "",
-        country: "",
+        country,
+        city,
         status: PartnerAccountStatus.ACTIVE,
         activatedAt: new Date(),
         profile: {
