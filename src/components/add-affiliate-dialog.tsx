@@ -1,8 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useActionState } from "react";
-import { useFormStatus } from "react-dom";
+import { useMemo, useState, useTransition } from "react";
 import { createAffiliateAction, type CreateAffiliateState } from "@/lib/actions";
 import { COUNTRIES, findCountryByName } from "@/lib/locations";
 
@@ -25,48 +23,47 @@ const dialOptions = (() => {
   }).sort((a, b) => a.label.localeCompare(b.label));
 })();
 
-function SubmitButton() {
-  const { pending } = useFormStatus();
-  return (
-    <button className="button" type="submit" disabled={pending}>
-      {pending ? "Adding..." : "Add"}
-    </button>
-  );
-}
-
 export function AddAffiliateDialog() {
   const [open, setOpen] = useState(false);
   const [country, setCountry] = useState("");
   const [city, setCity] = useState("");
   const [dialCode, setDialCode] = useState("");
-  const [state, formAction] = useActionState(createAffiliateAction, initialState);
+  const [state, setState] = useState<CreateAffiliateState>(initialState);
+  const [isPending, startTransition] = useTransition();
 
   const cityOptions = useMemo(() => {
     const entry = findCountryByName(country);
     return entry?.cities ?? [];
   }, [country]);
 
-  useEffect(() => {
-    if (state.status === "success") {
-      setOpen(false);
-      setCountry("");
-      setCity("");
-      setDialCode("");
-    }
-  }, [state.status]);
-
-  useEffect(() => {
-    if (cityOptions.length === 0) {
-      setCity("");
-      return;
-    }
-    if (!cityOptions.includes(city)) {
-      setCity("");
-    }
-  }, [cityOptions, city]);
+  function resetForm() {
+    setCountry("");
+    setCity("");
+    setDialCode("");
+    setState(initialState);
+  }
 
   function close() {
     setOpen(false);
+    resetForm();
+  }
+
+  function handleSubmit(formData: FormData) {
+    startTransition(async () => {
+      const result = await createAffiliateAction(state, formData);
+      setState(result);
+      if (result.status === "success") {
+        setOpen(false);
+        setCountry("");
+        setCity("");
+        setDialCode("");
+      }
+    });
+  }
+
+  function handleCountryChange(value: string) {
+    setCountry(value);
+    setCity("");
   }
 
   function getFieldError(field: keyof NonNullable<CreateAffiliateState["fieldErrors"]>) {
@@ -97,7 +94,7 @@ export function AddAffiliateDialog() {
               </button>
             </div>
             <div className="dialog-content">
-              <form action={formAction} className="stack-lg">
+              <form action={handleSubmit} className="stack-lg">
                 {state.status === "error" && state.error ? (
                   <div className="form-message" role="alert">
                     {state.error}
@@ -160,7 +157,7 @@ export function AddAffiliateDialog() {
                       className="select"
                       name="country"
                       value={country}
-                      onChange={(event) => setCountry(event.target.value)}
+                      onChange={(event) => handleCountryChange(event.target.value)}
                       required
                     >
                       <option value="">Select a country</option>
@@ -218,7 +215,9 @@ export function AddAffiliateDialog() {
                 </label>
 
                 <div className="button-row">
-                  <SubmitButton />
+                  <button className="button" type="submit" disabled={isPending}>
+                    {isPending ? "Adding..." : "Add"}
+                  </button>
                   <button className="button button-secondary" type="button" onClick={close}>
                     Cancel
                   </button>
