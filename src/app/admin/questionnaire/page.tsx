@@ -4,17 +4,14 @@ import { SubmitButton } from "@/components/submit-button";
 import { prisma } from "@/lib/prisma";
 
 export default async function AdminQuestionnairePage() {
-  const [prompts, products] = await Promise.all([
-    prisma.questionPrompt.findMany({
-      include: { product: true },
-      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }]
-    }),
-    prisma.product.findMany({ orderBy: { name: "asc" } })
-  ]);
+  const prompts = await prisma.questionPrompt.findMany({
+    include: { product: true },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }]
+  });
 
   return (
     <div className="stack-lg">
-      <SectionCard title="Application prompts" eyebrow="Admin-managed questionnaire">
+      <SectionCard title="Application questions" eyebrow="Admin-managed questionnaire">
         <div className="stack-lg">
           {prompts.map((prompt) => (
             <div key={prompt.id} className="note">
@@ -27,21 +24,10 @@ export default async function AdminQuestionnairePage() {
         </div>
       </SectionCard>
 
-      <SectionCard title="Add prompt" eyebrow="Subjective questions">
+      <SectionCard title="Add question" eyebrow="Subjective questions">
         <form action={createQuestionPromptAction} className="stack-md">
           <label className="field">
-            <span>Product</span>
-            <select className="select" name="productId">
-              <option value="">All products</option>
-              {products.map((product) => (
-                <option key={product.id} value={product.id}>
-                  {product.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="field">
-            <span>Prompt label</span>
+            <span>Question</span>
             <input className="input" name="label" required />
           </label>
           <label className="field">
@@ -57,7 +43,7 @@ export default async function AdminQuestionnairePage() {
               <input type="checkbox" name="isRequired" defaultChecked /> Required
             </span>
           </label>
-          <SubmitButton label="Create prompt" pendingLabel="Creating..." />
+          <SubmitButton label="Add question" pendingLabel="Adding..." />
         </form>
       </SectionCard>
     </div>
