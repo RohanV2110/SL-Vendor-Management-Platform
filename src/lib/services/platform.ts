@@ -1543,6 +1543,72 @@ export async function updateCommissionStatus(input: {
   });
 }
 
+export async function createCommissionEntry(input: {
+  adminUserId: string;
+  partnerAccountId: string;
+  type: CommissionEntryType;
+  amount: number;
+  status?: CommissionLedgerStatus;
+  description: string;
+  referralId?: string | null;
+  scheduledFor?: Date | null;
+}) {
+  if (!Number.isFinite(input.amount)) {
+    throw new Error("Amount must be a number.");
+  }
+  if (input.type === CommissionEntryType.CLAWBACK) {
+    throw new Error("Use the clawback flow to create clawbacks.");
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const partner = await tx.partnerAccount.findUnique({
+      where: { id: input.partnerAccountId }
+    });
+    if (!partner) {
+      throw new Error("Partner not found.");
+    }
+
+    const agreement = await tx.agreement.findFirst({
+      where: {
+        partnerAccountId: input.partnerAccountId,
+        status: { in: [AgreementStatus.ACTIVE, AgreementStatus.DRAFT] }
+      },
+      orderBy: [{ effectiveStartDate: "desc" }, { version: "desc" }]
+    });
+    if (!agreement) {
+      throw new Error("Partner has no active agreement.");
+    }
+
+    const status = input.status ?? CommissionLedgerStatus.APPROVED;
+
+    const entry = await tx.commissionLedgerEntry.create({
+      data: {
+        partnerAccountId: input.partnerAccountId,
+        agreementId: agreement.id,
+        referralId: input.referralId ?? null,
+        type: input.type,
+        status,
+        amount: input.amount,
+        description: input.description,
+        scheduledFor: input.scheduledFor ?? null,
+        payableAt: status === CommissionLedgerStatus.PAYABLE ? new Date() : null,
+        paidAt: status === CommissionLedgerStatus.PAID ? new Date() : null
+      }
+    });
+
+    await createAuditLog(tx, {
+      actorUserId: input.adminUserId,
+      entityType: "CommissionLedgerEntry",
+      entityId: entry.id,
+      action: "commission.manual_entry_created",
+      summary: `Manual ${input.type.toLowerCase()} commission for ${partner.company}`,
+      nextState: { amount: entry.amount.toString(), status }
+    });
+
+    return entry;
+  });
+}
+
 export async function createClawback(input: {
   adminUserId: string;
   entryId: string;

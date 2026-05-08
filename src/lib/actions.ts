@@ -2,13 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { AgreementDocumentType, CommissionLedgerStatus, CommissionType, DealStage, NoteEntityType } from "@prisma/client";
+import { AgreementDocumentType, CommissionEntryType, CommissionLedgerStatus, CommissionType, DealStage, NoteEntityType } from "@prisma/client";
 import { requirePartnerAccountId, requireRole } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 import {
   activatePartnerAccount,
   completePartnerInvite,
   createClawback,
+  createCommissionEntry,
   createManualAffiliate,
   createPayoutBatch,
   createReferral,
@@ -361,6 +362,55 @@ export async function createClawbackAction(formData: FormData) {
     reason: getRequiredString(formData, "reason")
   });
   revalidatePath("/admin/commissions");
+}
+
+export async function createCommissionAction(formData: FormData) {
+  const admin = await requireRole("ADMIN");
+
+  const partnerAccountId = getRequiredString(formData, "partnerAccountId").trim();
+  const typeRaw = getRequiredString(formData, "type").trim();
+  const statusRaw = getOptionalString(formData, "status");
+  const amountRaw = getRequiredString(formData, "amount").trim();
+  const description = getRequiredString(formData, "description").trim();
+  const referralId = getOptionalString(formData, "referralId")?.trim() || undefined;
+  const scheduledForRaw = getOptionalString(formData, "scheduledFor")?.trim();
+
+  if (!partnerAccountId) {
+    throw new Error("Select a partner.");
+  }
+  const amount = Number(amountRaw);
+  if (!Number.isFinite(amount)) {
+    throw new Error("Amount must be a valid number.");
+  }
+  if (!description) {
+    throw new Error("Description is required.");
+  }
+
+  const allowedTypes: CommissionEntryType[] = [
+    CommissionEntryType.UPFRONT,
+    CommissionEntryType.TRAILING,
+    CommissionEntryType.ADJUSTMENT
+  ];
+  const type = typeRaw as CommissionEntryType;
+  if (!allowedTypes.includes(type)) {
+    throw new Error("Unsupported commission type.");
+  }
+
+  const status = statusRaw ? (statusRaw as CommissionLedgerStatus) : undefined;
+
+  await createCommissionEntry({
+    adminUserId: admin.id,
+    partnerAccountId,
+    type,
+    status,
+    amount,
+    description,
+    referralId: referralId ?? null,
+    scheduledFor: scheduledForRaw ? new Date(scheduledForRaw) : null
+  });
+
+  revalidatePath("/admin/commissions");
+  revalidatePath("/partner/earnings");
 }
 
 export async function startStripeOnboardingAction() {
