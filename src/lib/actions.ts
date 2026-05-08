@@ -684,6 +684,19 @@ export async function createQuestionPromptAction(formData: FormData) {
   revalidatePath("/admin/questionnaire");
 }
 
+export async function deleteQuestionPromptAction(formData: FormData) {
+  await requireRole("ADMIN");
+  const id = getRequiredString(formData, "id").trim();
+  if (!id) {
+    throw new Error("Question id is required.");
+  }
+  await prisma.questionPrompt.update({
+    where: { id },
+    data: { isActive: false }
+  });
+  revalidatePath("/admin/questionnaire");
+}
+
 export async function addInternalNoteAction(formData: FormData) {
   const admin = await requireRole("ADMIN");
   const entityType = getRequiredString(formData, "entityType");
