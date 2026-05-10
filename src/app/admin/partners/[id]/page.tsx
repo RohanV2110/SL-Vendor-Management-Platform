@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { addInternalNoteAction } from "@/lib/actions";
+import { addInternalNoteAction, approvePartnerAction } from "@/lib/actions";
 import { SectionCard } from "@/components/section-card";
 import { StatusBadge } from "@/components/status-badge";
 import { SubmitButton } from "@/components/submit-button";
@@ -55,6 +55,12 @@ export default async function AdminPartnerDetailPage({ params }: { params: Promi
         <Link className="button button-secondary" href="/admin/partners">
           Back to Partners
         </Link>
+        {partner.status !== "ACTIVE" ? (
+          <form action={approvePartnerAction}>
+            <input type="hidden" name="partnerAccountId" value={partner.id} />
+            <SubmitButton label="Approve partner" pendingLabel="Approving..." />
+          </form>
+        ) : null}
       </div>
 
       <SectionCard title={partner.company || partner.primaryContactName} eyebrow="Partner profile" action={<StatusBadge value={partner.status} />}>

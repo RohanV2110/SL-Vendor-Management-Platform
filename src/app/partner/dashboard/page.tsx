@@ -19,7 +19,8 @@ export default async function PartnerDashboardPage() {
           id: true,
           vendorReferralCode: true,
           vendorReferralCodeActive: true,
-          stripeOnboardingComplete: true
+          stripeOnboardingComplete: true,
+          status: true
         }
       }),
       prisma.partnerAccount.count({ where: { referredByVendorId: partnerId } }),
@@ -53,6 +54,8 @@ export default async function PartnerDashboardPage() {
   if (!partner) {
     redirect("/apply");
   }
+
+  const isActive = partner.status === "ACTIVE";
 
   return (
     <div className="stack-lg">
@@ -94,6 +97,7 @@ export default async function PartnerDashboardPage() {
           partnerAccountId={partner.id}
           vendorReferralCode={partner.vendorReferralCode}
           vendorReferralCodeActive={partner.vendorReferralCodeActive}
+          disabled={!isActive}
         />
 
         <SectionCard

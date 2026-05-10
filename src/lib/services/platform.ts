@@ -572,6 +572,60 @@ export async function generateVendorReferralCode(input: { partnerAccountId: stri
   });
 }
 
+export async function approvePartnerAccount(input: {
+  partnerAccountId: string;
+  adminUserId: string;
+}) {
+  return prisma.$transaction(async (tx) => {
+    const partner = await tx.partnerAccount.findUnique({
+      where: { id: input.partnerAccountId },
+      include: { application: true }
+    });
+
+    if (!partner) {
+      throw new Error("Partner not found.");
+    }
+
+    if (partner.status === PartnerAccountStatus.ACTIVE) {
+      return partner;
+    }
+
+    const previousStatus = partner.status;
+    const now = new Date();
+
+    const updated = await tx.partnerAccount.update({
+      where: { id: partner.id },
+      data: {
+        status: PartnerAccountStatus.ACTIVE,
+        activatedAt: partner.activatedAt ?? now,
+        activationNoticeSeenAt: null
+      }
+    });
+
+    await tx.partnerApplication.update({
+      where: { id: partner.applicationId },
+      data: {
+        status: PartnerApplicationStatus.ACTIVE,
+        activatedAt: partner.application.activatedAt ?? now,
+        reviewedAt: partner.application.reviewedAt ?? now,
+        reviewedById: partner.application.reviewedById ?? input.adminUserId
+      }
+    });
+
+    await createAuditLog(tx, {
+      actorUserId: input.adminUserId,
+      entityType: "PartnerAccount",
+      entityId: partner.id,
+      action: "partner.approved",
+      summary: `${partner.primaryContactName} (${partner.company}) approved by admin.`,
+      previousState: { status: previousStatus },
+      nextState: { status: PartnerAccountStatus.ACTIVE }
+    });
+
+    return updated;
+  });
+}
+
 export class DuplicateAffiliateEmailError extends Error {
   constructor(message = "An account with that email already exists.") {
     super(message);

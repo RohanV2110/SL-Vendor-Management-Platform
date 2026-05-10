@@ -7,6 +7,7 @@ import { requirePartnerAccountId, requireRole } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 import {
   activatePartnerAccount,
+  approvePartnerAccount,
   completePartnerInvite,
   createClawback,
   createCommissionEntry,
@@ -142,6 +143,14 @@ export async function generateVendorReferralCodeAction(formData: FormData) {
     throw new Error("You can only manage your own referral code.");
   }
 
+  const partner = await prisma.partnerAccount.findUnique({
+    where: { id: verifiedPartnerAccountId },
+    select: { status: true }
+  });
+  if (partner?.status !== "ACTIVE") {
+    throw new Error("Your account is not active yet. Contact the admin.");
+  }
+
   await generateVendorReferralCode({
     partnerAccountId,
     actorUserId: user.id
@@ -210,6 +219,17 @@ export async function createAffiliateAction(
 
   if (Object.keys(fieldErrors).length > 0) {
     return { status: "error", fieldErrors };
+  }
+
+  const partnerStatus = await prisma.partnerAccount.findUnique({
+    where: { id: partnerAccountId },
+    select: { status: true }
+  });
+  if (partnerStatus?.status !== "ACTIVE") {
+    return {
+      status: "error",
+      error: "Your account is not active yet. Contact the admin."
+    };
   }
 
   try {
@@ -775,4 +795,28 @@ export async function addInternalNoteAction(formData: FormData) {
   revalidatePath("/admin/partners");
   revalidatePath("/admin/referrals");
   revalidatePath("/admin/deals");
+}
+
+export async function approvePartnerAction(formData: FormData) {
+  const admin = await requireRole("ADMIN");
+  const partnerAccountId = getRequiredString(formData, "partnerAccountId").trim();
+  if (!partnerAccountId) {
+    throw new Error("Partner is required.");
+  }
+
+  await approvePartnerAccount({ partnerAccountId, adminUserId: admin.id });
+
+  revalidatePath("/admin/partners");
+  revalidatePath(`/admin/partners/${partnerAccountId}`);
+  revalidatePath("/partner/dashboard");
+  revalidatePath("/partner/affiliates");
+  revalidatePath("/partner/referrals");
+}
+
+export async function acknowledgePartnerActivationAction() {
+  const partnerAccountId = await requirePartnerAccountId();
+  await prisma.partnerAccount.update({
+    where: { id: partnerAccountId },
+    data: { activationNoticeSeenAt: new Date() }
+  });
 }

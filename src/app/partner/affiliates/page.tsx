@@ -32,12 +32,14 @@ export default async function PartnerAffiliatesPage({ searchParams }: PartnerAff
 
   const partner = await prisma.partnerAccount.findUnique({
     where: { id: partnerId },
-    select: { id: true }
+    select: { id: true, status: true }
   });
 
   if (!partner) {
     redirect("/apply");
   }
+
+  const isActive = partner.status === "ACTIVE";
 
   const affiliateWhere = {
     referredByVendorId: partnerId,
@@ -90,7 +92,7 @@ export default async function PartnerAffiliatesPage({ searchParams }: PartnerAff
   };
 
   return (
-    <SectionCard title="Affiliates" eyebrow="Partner-linked accounts" action={<AddAffiliateDialog />}>
+    <SectionCard title="Affiliates" eyebrow="Partner-linked accounts" action={<AddAffiliateDialog disabled={!isActive} />}>
       <div className="stack-lg">
         <form className="filters-bar">
           <label className="filter-field">

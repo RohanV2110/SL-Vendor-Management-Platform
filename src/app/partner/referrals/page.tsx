@@ -17,7 +17,8 @@ export default async function PartnerReferralsPage() {
         id: true,
         vendorReferralCode: true,
         vendorReferralCodeActive: true,
-        referralClicks: true
+        referralClicks: true,
+        status: true
       }
     }),
     prisma.partnerAccount.count({ where: { referredByVendorId: partnerId } }),
@@ -55,6 +56,7 @@ export default async function PartnerReferralsPage() {
         partnerAccountId={partner.id}
         vendorReferralCode={partner.vendorReferralCode}
         vendorReferralCodeActive={partner.vendorReferralCodeActive}
+        disabled={partner.status !== "ACTIVE"}
       />
 
       <SectionCard

@@ -849,6 +849,49 @@ td strong {
   width: 100%;
 }
 
+.status-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 18px;
+  margin-bottom: 24px;
+  border-radius: 10px;
+  border: 1px solid var(--line-strong);
+  background: var(--warm-white);
+  color: var(--obsidian);
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
+.status-banner strong {
+  font-weight: 700;
+}
+
+.status-banner--warning {
+  border-color: #f3d27a;
+  background: #fdf6dd;
+  color: #6a4f0a;
+}
+
+.status-banner--success {
+  border-color: #b6e0c1;
+  background: #e6f6ec;
+  color: #1f5b32;
+  animation: status-banner-fade 5s forwards;
+}
+
+@keyframes status-banner-fade {
+  0%, 80% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
 .phone-row__code {
   flex: 0 0 120px;
   width: 120px;

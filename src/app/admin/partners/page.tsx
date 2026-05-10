@@ -1,6 +1,8 @@
 import { SectionCard } from "@/components/section-card";
 import { StatusBadge } from "@/components/status-badge";
+import { SubmitButton } from "@/components/submit-button";
 import { PartnerDetailsDialog, type PartnerDialogData } from "@/components/admin/partner-details-dialog";
+import { approvePartnerAction } from "@/lib/actions";
 import { prisma } from "@/lib/prisma";
 import { buildAriesReferralLink } from "@/lib/referral-links";
 
@@ -97,7 +99,19 @@ export default async function AdminPartnersPage() {
                       <StatusBadge value={partner.status} />
                     </td>
                     <td style={{ textAlign: "right" }}>
-                      <PartnerDetailsDialog partner={dialogData} />
+                      <div className="inline-form" style={{ justifyContent: "flex-end", flexWrap: "nowrap" }}>
+                        {partner.status !== "ACTIVE" ? (
+                          <form action={approvePartnerAction}>
+                            <input type="hidden" name="partnerAccountId" value={partner.id} />
+                            <SubmitButton
+                              className="button"
+                              label="Approve"
+                              pendingLabel="Approving..."
+                            />
+                          </form>
+                        ) : null}
+                        <PartnerDetailsDialog partner={dialogData} />
+                      </div>
                     </td>
                   </tr>
                 );

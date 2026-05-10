@@ -291,6 +291,7 @@ model PartnerAccount {
   stripeAccountId           String?
   stripeOnboardingComplete  Boolean                  @default(false)
   activatedAt               DateTime?
+  activationNoticeSeenAt    DateTime?
   createdAt                 DateTime                 @default(now())
   updatedAt                 DateTime                 @updatedAt
   application               PartnerApplication       @relation(fields: [applicationId], references: [id])

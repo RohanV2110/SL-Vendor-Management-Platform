@@ -23,7 +23,11 @@ const dialOptions = (() => {
   }).sort((a, b) => a.label.localeCompare(b.label));
 })();
 
-export function AddAffiliateDialog() {
+type AddAffiliateDialogProps = {
+  disabled?: boolean;
+};
+
+export function AddAffiliateDialog({ disabled = false }: AddAffiliateDialogProps = {}) {
   const [open, setOpen] = useState(false);
   const [country, setCountry] = useState("");
   const [city, setCity] = useState("");
@@ -72,7 +76,13 @@ export function AddAffiliateDialog() {
 
   return (
     <>
-      <button className="button" type="button" onClick={() => setOpen(true)}>
+      <button
+        className="button"
+        type="button"
+        onClick={() => setOpen(true)}
+        disabled={disabled}
+        aria-disabled={disabled || undefined}
+      >
         Add Affiliate
       </button>
       {open ? (
