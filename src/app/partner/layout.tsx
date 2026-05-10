@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 const nav = [
   { href: "/partner/dashboard", label: "Dashboard" },
   { href: "/partner/referrals", label: "Referrals" },
-  { href: "/partner/affiliates", label: "Affiliates" },
+  { href: "/partner/affiliates", label: "Deals" },
   { href: "/partner/earnings", label: "Earnings" },
   { href: "/partner/activity", label: "Activity" }
 ];
