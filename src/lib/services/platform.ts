@@ -10,6 +10,7 @@ import {
   DealStage,
   PartnerAccountStatus,
   PartnerApplicationStatus,
+  PartnerDealStatus,
   PayoutBatchStatus,
   Prisma,
   QuarterlyActivityStatus,
@@ -624,6 +625,134 @@ export async function approvePartnerAccount(input: {
 
     return updated;
   });
+}
+
+export type PartnerDealInput = {
+  name: string;
+  email: string;
+  companyName: string;
+  website?: string | null;
+  phoneCountryCode?: string | null;
+  phoneNumber?: string | null;
+  country: string;
+  state: string;
+  notes?: string | null;
+};
+
+export async function createPartnerDeal(input: PartnerDealInput & { partnerAccountId: string }) {
+  const partner = await prisma.partnerAccount.findUnique({
+    where: { id: input.partnerAccountId },
+    select: {
+      id: true,
+      status: true,
+      company: true,
+      primaryContactName: true
+    }
+  });
+
+  if (!partner) {
+    throw new Error("Partner not found.");
+  }
+
+  if (partner.status !== PartnerAccountStatus.ACTIVE) {
+    throw new Error("Your account is not active yet. Contact the admin.");
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const deal = await tx.partnerDeal.create({
+      data: {
+        partnerAccountId: partner.id,
+        name: input.name,
+        email: input.email.toLowerCase(),
+        companyName: input.companyName,
+        website: input.website || null,
+        phoneCountryCode: input.phoneCountryCode || null,
+        phoneNumber: input.phoneNumber || null,
+        country: input.country,
+        state: input.state,
+        notes: input.notes || null
+      }
+    });
+
+    const partnerLabel = partner.company || partner.primaryContactName;
+    await createAdminNotifications(
+      tx,
+      "New deal submitted",
+      `${input.name} (${input.companyName}) added by ${partnerLabel} and is awaiting approval.`,
+      "/admin/deals"
+    );
+
+    return deal;
+  });
+}
+
+export async function updatePartnerDeal(input: {
+  dealId: string;
+  actorUserId: string;
+  actorRole: "PARTNER" | "ADMIN";
+  partnerAccountId?: string;
+  data: PartnerDealInput;
+}) {
+  const deal = await prisma.partnerDeal.findUnique({
+    where: { id: input.dealId },
+    select: { id: true, partnerAccountId: true }
+  });
+
+  if (!deal) {
+    throw new Error("Deal not found.");
+  }
+
+  if (input.actorRole === "PARTNER") {
+    if (!input.partnerAccountId || deal.partnerAccountId !== input.partnerAccountId) {
+      throw new Error("You can only edit your own deals.");
+    }
+  }
+
+  return prisma.partnerDeal.update({
+    where: { id: deal.id },
+    data: {
+      name: input.data.name,
+      email: input.data.email.toLowerCase(),
+      companyName: input.data.companyName,
+      website: input.data.website || null,
+      phoneCountryCode: input.data.phoneCountryCode || null,
+      phoneNumber: input.data.phoneNumber || null,
+      country: input.data.country,
+      state: input.data.state,
+      notes: input.data.notes || null
+    }
+  });
+}
+
+export async function reviewPartnerDeal(input: {
+  dealId: string;
+  decision: "APPROVED" | "REJECTED";
+  adminUserId: string;
+  rejectionReason?: string | null;
+}) {
+  const deal = await prisma.partnerDeal.findUnique({
+    where: { id: input.dealId },
+    select: { id: true }
+  });
+
+  if (!deal) {
+    throw new Error("Deal not found.");
+  }
+
+  return prisma.partnerDeal.update({
+    where: { id: deal.id },
+    data: {
+      status:
+        input.decision === "APPROVED" ? PartnerDealStatus.APPROVED : PartnerDealStatus.REJECTED,
+      reviewedAt: new Date(),
+      reviewedById: input.adminUserId,
+      rejectionReason: input.decision === "REJECTED" ? input.rejectionReason ?? null : null
+    }
+  });
+}
+
+export async function deletePartnerDeal(input: { dealId: string; adminUserId: string }) {
+  await prisma.partnerDeal.delete({ where: { id: input.dealId } });
 }
 
 export class DuplicateAffiliateEmailError extends Error {

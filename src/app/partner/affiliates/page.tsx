@@ -1,13 +1,13 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { PartnerAccountStatus } from "@prisma/client";
-import { AddAffiliateDialog } from "@/components/add-affiliate-dialog";
+import { PartnerDealStatus } from "@prisma/client";
+import { PartnerDealDialog } from "@/components/partner-deal-dialog";
 import { SectionCard } from "@/components/section-card";
 import { requirePartnerAccountId } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 import { formatDateTime } from "@/lib/utils";
 
-type PartnerAffiliatesPageProps = {
+type PartnerDealsPageProps = {
   searchParams?: Promise<{
     q?: string;
     status?: string;
@@ -17,12 +17,25 @@ type PartnerAffiliatesPageProps = {
   }>;
 };
 
-export default async function PartnerAffiliatesPage({ searchParams }: PartnerAffiliatesPageProps) {
+const STATUS_LABELS: Record<PartnerDealStatus, string> = {
+  PENDING_APPROVAL: "Inactive",
+  APPROVED: "Active",
+  REJECTED: "Rejected"
+};
+
+const STATUS_TOOLTIPS: Record<PartnerDealStatus, string> = {
+  PENDING_APPROVAL: "The admin needs to verify and approve this.",
+  APPROVED: "Approved by the admin.",
+  REJECTED: "Rejected by the admin."
+};
+
+export default async function PartnerDealsPage({ searchParams }: PartnerDealsPageProps) {
   const params = searchParams ? await searchParams : {};
   const q = typeof params.q === "string" ? params.q.trim() : "";
-  const status =
-    typeof params.status === "string" && Object.values(PartnerAccountStatus).includes(params.status as PartnerAccountStatus)
-      ? params.status
+  const statusFilter =
+    typeof params.status === "string" &&
+    Object.values(PartnerDealStatus).includes(params.status as PartnerDealStatus)
+      ? (params.status as PartnerDealStatus)
       : "";
   const from = typeof params.from === "string" ? params.from : "";
   const to = typeof params.to === "string" ? params.to : "";
@@ -41,9 +54,9 @@ export default async function PartnerAffiliatesPage({ searchParams }: PartnerAff
 
   const isActive = partner.status === "ACTIVE";
 
-  const affiliateWhere = {
-    referredByVendorId: partnerId,
-    ...(status ? { status: status as PartnerAccountStatus } : {}),
+  const dealWhere = {
+    partnerAccountId: partnerId,
+    ...(statusFilter ? { status: statusFilter } : {}),
     ...(from || to
       ? {
           createdAt: {
@@ -55,36 +68,29 @@ export default async function PartnerAffiliatesPage({ searchParams }: PartnerAff
     ...(q
       ? {
           OR: [
-            { affiliateId: { contains: q, mode: "insensitive" as const } },
-            { primaryContactName: { contains: q, mode: "insensitive" as const } },
-            { primaryContactEmail: { contains: q, mode: "insensitive" as const } }
+            { name: { contains: q, mode: "insensitive" as const } },
+            { email: { contains: q, mode: "insensitive" as const } },
+            { companyName: { contains: q, mode: "insensitive" as const } }
           ]
         }
       : {})
   };
 
-  const [affiliates, affiliateCount] = await Promise.all([
-    prisma.partnerAccount.findMany({
-      where: affiliateWhere,
-      select: {
-        id: true,
-        affiliateId: true,
-        primaryContactName: true,
-        primaryContactEmail: true,
-        createdAt: true
-      },
+  const [deals, dealCount] = await Promise.all([
+    prisma.partnerDeal.findMany({
+      where: dealWhere,
       orderBy: { createdAt: "desc" },
       skip: (page - 1) * pageSize,
       take: pageSize
     }),
-    prisma.partnerAccount.count({ where: affiliateWhere })
+    prisma.partnerDeal.count({ where: dealWhere })
   ]);
 
-  const pageCount = Math.max(1, Math.ceil(affiliateCount / pageSize));
+  const pageCount = Math.max(1, Math.ceil(dealCount / pageSize));
   const pageHref = (nextPage: number) => {
     const query = new URLSearchParams();
     if (q) query.set("q", q);
-    if (status) query.set("status", status);
+    if (statusFilter) query.set("status", statusFilter);
     if (from) query.set("from", from);
     if (to) query.set("to", to);
     query.set("page", String(nextPage));
@@ -92,20 +98,29 @@ export default async function PartnerAffiliatesPage({ searchParams }: PartnerAff
   };
 
   return (
-    <SectionCard title="Affiliates" eyebrow="Partner-linked accounts" action={<AddAffiliateDialog disabled={!isActive} />}>
+    <SectionCard
+      title="Deals"
+      eyebrow="Deals you have submitted"
+      action={<PartnerDealDialog mode="create" disabled={!isActive} />}
+    >
       <div className="stack-lg">
         <form className="filters-bar">
           <label className="filter-field">
             <span>Search</span>
-            <input className="input" name="q" placeholder="Name, email, or affiliate ID" defaultValue={q} />
+            <input
+              className="input"
+              name="q"
+              placeholder="Name, email, or company"
+              defaultValue={q}
+            />
           </label>
           <label className="filter-field">
             <span>Status</span>
-            <select className="select" name="status" defaultValue={status}>
+            <select className="select" name="status" defaultValue={statusFilter}>
               <option value="">All statuses</option>
-              {Object.values(PartnerAccountStatus).map((value) => (
+              {Object.values(PartnerDealStatus).map((value) => (
                 <option key={value} value={value}>
-                  {value.toLowerCase().replaceAll("_", " ")}
+                  {STATUS_LABELS[value]}
                 </option>
               ))}
             </select>
@@ -127,24 +142,56 @@ export default async function PartnerAffiliatesPage({ searchParams }: PartnerAff
           <table>
             <thead>
               <tr>
-                <th>Affiliate ID</th>
                 <th>Name</th>
                 <th>Email</th>
-                <th>Date Joined</th>
+                <th>Company</th>
+                <th>Status</th>
+                <th>Submitted</th>
+                <th aria-label="Actions" />
               </tr>
             </thead>
             <tbody>
-              {affiliates.map((affiliate) => (
-                <tr key={affiliate.id}>
-                  <td>{affiliate.affiliateId ?? "Pending"}</td>
-                  <td>{affiliate.primaryContactName}</td>
-                  <td>{affiliate.primaryContactEmail}</td>
-                  <td>{formatDateTime(affiliate.createdAt)}</td>
+              {deals.map((deal) => (
+                <tr key={deal.id}>
+                  <td>{deal.name}</td>
+                  <td>{deal.email}</td>
+                  <td>{deal.companyName}</td>
+                  <td>
+                    <span
+                      className={`deal-status deal-status--${deal.status.toLowerCase()}`}
+                      title={STATUS_TOOLTIPS[deal.status]}
+                    >
+                      {STATUS_LABELS[deal.status]}
+                    </span>
+                  </td>
+                  <td>{formatDateTime(deal.createdAt)}</td>
+                  <td style={{ textAlign: "right" }}>
+                    <PartnerDealDialog
+                      mode="edit"
+                      actorRole="PARTNER"
+                      existing={{
+                        id: deal.id,
+                        name: deal.name,
+                        email: deal.email,
+                        companyName: deal.companyName,
+                        website: deal.website,
+                        phoneCountryCode: deal.phoneCountryCode,
+                        phoneNumber: deal.phoneNumber,
+                        country: deal.country,
+                        state: deal.state,
+                        notes: deal.notes
+                      }}
+                    />
+                  </td>
                 </tr>
               ))}
-              {!affiliates.length ? (
+              {!deals.length ? (
                 <tr>
-                  <td colSpan={4}>No affiliates found. Generate and share your Aries AI referral link to start.</td>
+                  <td colSpan={6}>
+                    {isActive
+                      ? "No deals yet. Click \u201CAdd Deal\u201D to submit your first one."
+                      : "Your account is not active yet. Once approved, you can submit deals."}
+                  </td>
                 </tr>
               ) : null}
             </tbody>

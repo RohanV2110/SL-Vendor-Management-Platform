@@ -350,6 +350,17 @@ h3 {
   border-color: var(--line-strong);
 }
 
+.button-danger {
+  background: #fbe6e6;
+  color: #7a1d1d;
+  border-color: #f3b6b6;
+}
+
+.button-danger:hover {
+  background: #f3b6b6;
+  color: #5a1414;
+}
+
 .table-action-button {
   min-width: 92px;
   padding: 10px 14px;
@@ -890,6 +901,37 @@ td strong {
     opacity: 0;
     transform: translateY(-4px);
   }
+}
+
+.deal-status {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border: 1px solid var(--line-strong);
+  background: var(--warm-white);
+  color: var(--obsidian);
+  cursor: help;
+}
+
+.deal-status--pending_approval {
+  border-color: #f3d27a;
+  background: #fdf6dd;
+  color: #6a4f0a;
+}
+
+.deal-status--approved {
+  border-color: #b6e0c1;
+  background: #e6f6ec;
+  color: #1f5b32;
+}
+
+.deal-status--rejected {
+  border-color: #f3b6b6;
+  background: #fbe6e6;
+  color: #7a1d1d;
 }
 
 .phone-row__code {

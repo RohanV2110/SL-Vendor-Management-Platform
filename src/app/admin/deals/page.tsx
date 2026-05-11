@@ -1,152 +1,142 @@
-import { ReferralStatus } from "@prisma/client";
-import { addInternalNoteAction, saveDealAction } from "@/lib/actions";
+import { PartnerDealStatus } from "@prisma/client";
+import { PartnerDealDialog } from "@/components/partner-deal-dialog";
 import { SectionCard } from "@/components/section-card";
-import { StatusBadge } from "@/components/status-badge";
 import { SubmitButton } from "@/components/submit-button";
+import { deletePartnerDealAction, reviewPartnerDealAction } from "@/lib/actions";
 import { prisma } from "@/lib/prisma";
-import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
+import { formatDateTime } from "@/lib/utils";
 
-const stages = ["NEW", "QUALIFYING", "PROPOSAL", "NEGOTIATION", "CLOSED_WON", "CLOSED_LOST"] as const;
+const STATUS_LABELS: Record<PartnerDealStatus, string> = {
+  PENDING_APPROVAL: "Inactive",
+  APPROVED: "Active",
+  REJECTED: "Rejected"
+};
 
 export default async function AdminDealsPage() {
-  const [referrals, deals] = await Promise.all([
-    prisma.referral.findMany({
-      where: {
-        status: {
-          in: [ReferralStatus.APPROVED, ReferralStatus.CONVERTED, ReferralStatus.LOST]
-        }
-      },
-      include: {
-        partnerAccount: true,
-        product: true,
-        deal: true
-      },
-      orderBy: { approvedAt: "desc" }
-    }),
-    prisma.deal.findMany({
-      orderBy: { updatedAt: "desc" },
-      include: {
-        referral: true,
-        partnerAccount: true,
-        notes: {
-          include: { author: true },
-          orderBy: { createdAt: "desc" }
+  const deals = await prisma.partnerDeal.findMany({
+    orderBy: [{ status: "asc" }, { createdAt: "desc" }],
+    include: {
+      partnerAccount: {
+        select: {
+          id: true,
+          company: true,
+          primaryContactName: true,
+          primaryContactEmail: true
         }
       }
-    })
-  ]);
+    }
+  });
+
+  const pendingCount = deals.filter((deal) => deal.status === "PENDING_APPROVAL").length;
 
   return (
-    <div className="stack-lg">
-      <SectionCard title="Create or update deals" eyebrow="Approved referrals">
-        <div className="stack-lg">
-          {referrals.map((referral) => (
-            <form key={referral.id} action={saveDealAction} className="panel" style={{ boxShadow: "none" }}>
-              <div className="panel-body stack-md">
-                <div className="inline-form" style={{ justifyContent: "space-between" }}>
-                  <div>
-                    <strong>{referral.referredCompany}</strong>
-                    <p className="muted">
-                      {referral.partnerAccount.company} · {referral.product.name}
-                    </p>
-                  </div>
-                  <StatusBadge value={referral.status} />
-                </div>
-                <input type="hidden" name="referralId" value={referral.id} />
-                <div className="three-col">
-                  <label className="field">
-                    <span>Owner</span>
-                    <input className="input" name="ownerName" defaultValue={referral.deal?.ownerName ?? "Sales Ops"} required />
-                  </label>
-                  <label className="field">
-                    <span>Stage</span>
-                    <select className="select" name="stage" defaultValue={referral.deal?.stage ?? "NEW"}>
-                      {stages.map((stage) => (
-                        <option key={stage} value={stage}>
-                          {stage.replaceAll("_", " ")}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="field">
-                    <span>Close date</span>
-                    <input className="input" type="date" name="closeDate" defaultValue={referral.deal?.closeDate?.toISOString().slice(0, 10) ?? ""} />
-                  </label>
-                  <label className="field">
-                    <span>Expected value</span>
-                    <input className="input" type="number" min="0" step="0.01" name="expectedValue" defaultValue={referral.deal?.expectedValue?.toString() ?? ""} />
-                  </label>
-                  <label className="field">
-                    <span>Closed value</span>
-                    <input className="input" type="number" min="0" step="0.01" name="closedValue" defaultValue={referral.deal?.closedValue?.toString() ?? ""} />
-                  </label>
-                  <label className="field">
-                    <span>Notes</span>
-                    <textarea className="textarea" name="notes" defaultValue={referral.deal?.summaryNotes ?? ""} />
-                  </label>
-                </div>
-                <SubmitButton label="Save deal" pendingLabel="Saving..." />
-              </div>
-            </form>
-          ))}
-        </div>
-      </SectionCard>
-
-      <SectionCard title="Existing deals" eyebrow="Deal tracking">
-        <div className="stack-lg">
-          {deals.map((deal) => (
-            <div className="panel" key={deal.id} style={{ boxShadow: "none" }}>
-              <div className="panel-body stack-md">
-                <div className="inline-form" style={{ justifyContent: "space-between" }}>
-                  <div>
-                    <strong>{deal.referral.referredCompany}</strong>
-                    <p className="muted">
-                      {deal.partnerAccount.company} · Updated {formatDateTime(deal.updatedAt)}
-                    </p>
-                  </div>
-                  <StatusBadge value={deal.stage} />
-                </div>
-                <div className="three-col">
-                  <p className="note">
-                    <strong>Owner</strong>
+    <SectionCard
+      title="Partner Deals"
+      eyebrow={
+        pendingCount
+          ? `${pendingCount} deal${pendingCount === 1 ? "" : "s"} awaiting your approval`
+          : "All caught up"
+      }
+    >
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Referred by</th>
+              <th>Status</th>
+              <th>Submitted</th>
+              <th aria-label="Actions" />
+            </tr>
+          </thead>
+          <tbody>
+            {deals.map((deal) => {
+              const partnerLabel =
+                deal.partnerAccount.company || deal.partnerAccount.primaryContactName;
+              return (
+                <tr key={deal.id}>
+                  <td>
+                    <strong>{deal.name}</strong>
                     <br />
-                    {deal.ownerName}
-                  </p>
-                  <p className="note">
-                    <strong>Expected / closed</strong>
+                    <span className="muted">{deal.companyName}</span>
+                  </td>
+                  <td>{deal.email}</td>
+                  <td>
+                    {partnerLabel}
                     <br />
-                    {formatCurrency(deal.expectedValue?.toString() ?? 0)} / {formatCurrency(deal.closedValue?.toString() ?? 0)}
-                  </p>
-                  <p className="note">
-                    <strong>Close date</strong>
-                    <br />
-                    {formatDate(deal.closeDate)}
-                  </p>
-                </div>
-                {deal.summaryNotes ? (
-                  <p className="note">
-                    <strong>Deal summary</strong>
-                    <br />
-                    {deal.summaryNotes}
-                  </p>
-                ) : null}
-                {deal.notes.map((note) => (
-                  <div className="note" key={note.id}>
-                    <strong>{note.author.name}</strong>
-                    <p className="muted">{note.body}</p>
-                  </div>
-                ))}
-                <form action={addInternalNoteAction} className="stack-md">
-                  <input type="hidden" name="entityType" value="DEAL" />
-                  <input type="hidden" name="entityId" value={deal.id} />
-                  <textarea className="textarea" name="body" placeholder="Add deal context" required />
-                  <SubmitButton className="button button-secondary" label="Add note" pendingLabel="Saving..." />
-                </form>
-              </div>
-            </div>
-          ))}
-        </div>
-      </SectionCard>
-    </div>
+                    <span className="muted">{deal.partnerAccount.primaryContactEmail}</span>
+                  </td>
+                  <td>
+                    <span className={`deal-status deal-status--${deal.status.toLowerCase()}`}>
+                      {STATUS_LABELS[deal.status]}
+                    </span>
+                  </td>
+                  <td>{formatDateTime(deal.createdAt)}</td>
+                  <td style={{ textAlign: "right" }}>
+                    <div
+                      className="inline-form"
+                      style={{ justifyContent: "flex-end", flexWrap: "wrap", gap: 8 }}
+                    >
+                      {deal.status === "PENDING_APPROVAL" ? (
+                        <>
+                          <form action={reviewPartnerDealAction}>
+                            <input type="hidden" name="dealId" value={deal.id} />
+                            <input type="hidden" name="decision" value="APPROVED" />
+                            <SubmitButton
+                              className="button"
+                              label="Approve"
+                              pendingLabel="Approving..."
+                            />
+                          </form>
+                          <form action={reviewPartnerDealAction}>
+                            <input type="hidden" name="dealId" value={deal.id} />
+                            <input type="hidden" name="decision" value="REJECTED" />
+                            <SubmitButton
+                              className="button button-secondary"
+                              label="Reject"
+                              pendingLabel="Rejecting..."
+                            />
+                          </form>
+                        </>
+                      ) : null}
+                      <PartnerDealDialog
+                        mode="edit"
+                        actorRole="ADMIN"
+                        existing={{
+                          id: deal.id,
+                          name: deal.name,
+                          email: deal.email,
+                          companyName: deal.companyName,
+                          website: deal.website,
+                          phoneCountryCode: deal.phoneCountryCode,
+                          phoneNumber: deal.phoneNumber,
+                          country: deal.country,
+                          state: deal.state,
+                          notes: deal.notes
+                        }}
+                      />
+                      <form action={deletePartnerDealAction}>
+                        <input type="hidden" name="dealId" value={deal.id} />
+                        <SubmitButton
+                          className="button button-danger"
+                          label="Delete"
+                          pendingLabel="Deleting..."
+                        />
+                      </form>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+            {!deals.length ? (
+              <tr>
+                <td colSpan={6}>No deals submitted yet.</td>
+              </tr>
+            ) : null}
+          </tbody>
+        </table>
+      </div>
+    </SectionCard>
   );
 }

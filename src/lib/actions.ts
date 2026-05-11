@@ -12,6 +12,8 @@ import {
   createClawback,
   createCommissionEntry,
   createManualAffiliate,
+  createPartnerDeal,
+  deletePartnerDeal,
   DuplicateAffiliateEmailError,
   createPayoutBatch,
   createReferral,
@@ -22,13 +24,16 @@ import {
   markStripeOnboardingComplete,
   refreshQuarterlyActivity,
   reviewPartnerApplication,
+  reviewPartnerDeal,
   reviewReferral,
   sendAgreementDocuments,
   submitPartnerApplication,
   updateCommissionStatus,
+  updatePartnerDeal,
   upsertDeal,
   uploadPartnerDocument,
-  verifyPartnerDocument
+  verifyPartnerDocument,
+  type PartnerDealInput
 } from "@/lib/services/platform";
 import { env } from "@/lib/env";
 import { slugify } from "@/lib/utils";
@@ -819,4 +824,198 @@ export async function acknowledgePartnerActivationAction() {
     where: { id: partnerAccountId },
     data: { activationNoticeSeenAt: new Date() }
   });
+}
+
+export type PartnerDealFormState = {
+  status: "idle" | "error" | "success";
+  error?: string;
+  fieldErrors?: Partial<{
+    name: string;
+    email: string;
+    companyName: string;
+    website: string;
+    phone: string;
+    country: string;
+    state: string;
+    notes: string;
+  }>;
+};
+
+const dealEmailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function parsePartnerDealInput(formData: FormData): {
+  data?: PartnerDealInput;
+  fieldErrors: NonNullable<PartnerDealFormState["fieldErrors"]>;
+} {
+  const fieldErrors: NonNullable<PartnerDealFormState["fieldErrors"]> = {};
+
+  const name = getRequiredString(formData, "name").trim();
+  const email = getRequiredString(formData, "email").trim();
+  const companyName = getRequiredString(formData, "companyName").trim();
+  const website = (getOptionalString(formData, "website") ?? "").trim();
+  const phoneCountryCode = (getOptionalString(formData, "phoneCountryCode") ?? "").trim();
+  const phoneNumber = (getOptionalString(formData, "phoneNumber") ?? "").trim();
+  const country = getRequiredString(formData, "country").trim();
+  const stateValue = getRequiredString(formData, "state").trim();
+  const notes = (getOptionalString(formData, "notes") ?? "").trim();
+
+  if (!name) fieldErrors.name = "Name is required.";
+  if (!email) {
+    fieldErrors.email = "Email is required.";
+  } else if (!dealEmailRegex.test(email)) {
+    fieldErrors.email = "Enter a valid email address.";
+  }
+  if (!companyName) fieldErrors.companyName = "Company name is required.";
+  if (!country) fieldErrors.country = "Country is required.";
+  if (!stateValue) fieldErrors.state = "State is required.";
+
+  if (phoneNumber) {
+    if (!/^\d{10}$/.test(phoneNumber)) {
+      fieldErrors.phone = "Phone number must be exactly 10 digits.";
+    } else if (!phoneCountryCode) {
+      fieldErrors.phone = "Select a country code for the phone number.";
+    }
+  }
+
+  if (Object.keys(fieldErrors).length > 0) {
+    return { fieldErrors };
+  }
+
+  return {
+    fieldErrors,
+    data: {
+      name,
+      email,
+      companyName,
+      website: website || null,
+      phoneCountryCode: phoneCountryCode || null,
+      phoneNumber: phoneNumber || null,
+      country,
+      state: stateValue,
+      notes: notes || null
+    }
+  };
+}
+
+export async function createPartnerDealAction(
+  _prevState: PartnerDealFormState,
+  formData: FormData
+): Promise<PartnerDealFormState> {
+  const partnerAccountId = await requirePartnerAccountId();
+
+  const partner = await prisma.partnerAccount.findUnique({
+    where: { id: partnerAccountId },
+    select: { status: true }
+  });
+  if (partner?.status !== "ACTIVE") {
+    return {
+      status: "error",
+      error: "Your account is not active yet. Contact the admin."
+    };
+  }
+
+  const { data, fieldErrors } = parsePartnerDealInput(formData);
+  if (!data) {
+    return { status: "error", fieldErrors };
+  }
+
+  try {
+    await createPartnerDeal({ partnerAccountId, ...data });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to add deal.";
+    return { status: "error", error: message };
+  }
+
+  revalidatePath("/partner/affiliates");
+  revalidatePath("/partner/dashboard");
+  revalidatePath("/admin/deals");
+  revalidatePath("/admin");
+  return { status: "success" };
+}
+
+export async function updatePartnerDealAction(
+  _prevState: PartnerDealFormState,
+  formData: FormData
+): Promise<PartnerDealFormState> {
+  const dealId = getRequiredString(formData, "dealId").trim();
+  if (!dealId) {
+    return { status: "error", error: "Deal id is required." };
+  }
+
+  const { data, fieldErrors } = parsePartnerDealInput(formData);
+  if (!data) {
+    return { status: "error", fieldErrors };
+  }
+
+  const role = getRequiredString(formData, "actorRole") === "ADMIN" ? "ADMIN" : "PARTNER";
+
+  try {
+    if (role === "ADMIN") {
+      const admin = await requireRole("ADMIN");
+      await updatePartnerDeal({
+        dealId,
+        actorUserId: admin.id,
+        actorRole: "ADMIN",
+        data
+      });
+    } else {
+      const user = await requireRole("PARTNER");
+      const partnerAccountId = await requirePartnerAccountId();
+      await updatePartnerDeal({
+        dealId,
+        actorUserId: user.id,
+        actorRole: "PARTNER",
+        partnerAccountId,
+        data
+      });
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to update deal.";
+    return { status: "error", error: message };
+  }
+
+  revalidatePath("/partner/affiliates");
+  revalidatePath("/partner/dashboard");
+  revalidatePath("/admin/deals");
+  return { status: "success" };
+}
+
+export async function reviewPartnerDealAction(formData: FormData) {
+  const admin = await requireRole("ADMIN");
+  const dealId = getRequiredString(formData, "dealId").trim();
+  const decisionRaw = getRequiredString(formData, "decision").trim();
+  const decision = decisionRaw === "APPROVED" ? "APPROVED" : decisionRaw === "REJECTED" ? "REJECTED" : null;
+  const rejectionReason = (getOptionalString(formData, "rejectionReason") ?? "").trim() || null;
+
+  if (!dealId) {
+    throw new Error("Deal id is required.");
+  }
+  if (!decision) {
+    throw new Error("Invalid decision.");
+  }
+
+  await reviewPartnerDeal({
+    dealId,
+    decision,
+    adminUserId: admin.id,
+    rejectionReason
+  });
+
+  revalidatePath("/admin/deals");
+  revalidatePath("/partner/affiliates");
+  revalidatePath("/partner/dashboard");
+}
+
+export async function deletePartnerDealAction(formData: FormData) {
+  const admin = await requireRole("ADMIN");
+  const dealId = getRequiredString(formData, "dealId").trim();
+  if (!dealId) {
+    throw new Error("Deal id is required.");
+  }
+
+  await deletePartnerDeal({ dealId, adminUserId: admin.id });
+
+  revalidatePath("/admin/deals");
+  revalidatePath("/partner/affiliates");
+  revalidatePath("/partner/dashboard");
 }

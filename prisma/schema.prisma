@@ -51,6 +51,12 @@ enum DealStage {
   CLOSED_LOST
 }
 
+enum PartnerDealStatus {
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+}
+
 enum CommissionType {
   PERCENTAGE
   FIXED
@@ -305,6 +311,7 @@ model PartnerAccount {
   inviteTokens              PartnerInvite[]
   referrals                 Referral[]
   deals                     Deal[]
+  partnerDeals              PartnerDeal[]
   commissions               CommissionLedgerEntry[]
   snapshots                 QuarterlyActivitySnapshot[]
   payoutBatches             PayoutBatch[]
@@ -453,6 +460,31 @@ model Deal {
   notes            InternalNote[]
 
   @@index([stage])
+}
+
+model PartnerDeal {
+  id                String            @id @default(cuid())
+  partnerAccountId  String
+  name              String
+  email             String
+  companyName       String
+  website           String?
+  phoneCountryCode  String?
+  phoneNumber       String?
+  country           String
+  state             String
+  notes             String?
+  status            PartnerDealStatus @default(PENDING_APPROVAL)
+  reviewedAt        DateTime?
+  reviewedById      String?
+  rejectionReason   String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  partnerAccount    PartnerAccount    @relation(fields: [partnerAccountId], references: [id], onDelete: Cascade)
+
+  @@index([partnerAccountId])
+  @@index([status])
+  @@index([email])
 }
 
 model CommissionLedgerEntry {
