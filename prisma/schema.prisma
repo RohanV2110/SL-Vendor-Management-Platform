@@ -298,6 +298,10 @@ model PartnerAccount {
   stripeOnboardingComplete  Boolean                  @default(false)
   activatedAt               DateTime?
   activationNoticeSeenAt    DateTime?
+  ndaSignedAt               DateTime?
+  ndaMarkedById             String?
+  agreementSignedAt         DateTime?
+  agreementMarkedById       String?
   createdAt                 DateTime                 @default(now())
   updatedAt                 DateTime                 @updatedAt
   application               PartnerApplication       @relation(fields: [applicationId], references: [id])
@@ -474,6 +478,7 @@ model PartnerDeal {
   country           String
   state             String
   notes             String?
+  dealValue         Decimal?          @db.Decimal(12, 2)
   status            PartnerDealStatus @default(PENDING_APPROVAL)
   reviewedAt        DateTime?
   reviewedById      String?
@@ -481,6 +486,7 @@ model PartnerDeal {
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
   partnerAccount    PartnerAccount    @relation(fields: [partnerAccountId], references: [id], onDelete: Cascade)
+  commissionEntries CommissionLedgerEntry[]
 
   @@index([partnerAccountId])
   @@index([status])
@@ -492,6 +498,7 @@ model CommissionLedgerEntry {
   partnerAccountId    String
   referralId          String?
   dealId              String?
+  partnerDealId       String?
   agreementId         String
   payoutBatchId       String?
   parentEntryId       String?
@@ -510,6 +517,7 @@ model CommissionLedgerEntry {
   partnerAccount      PartnerAccount         @relation(fields: [partnerAccountId], references: [id], onDelete: Cascade)
   referral            Referral?              @relation(fields: [referralId], references: [id], onDelete: SetNull)
   deal                Deal?                  @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  partnerDeal         PartnerDeal?           @relation(fields: [partnerDealId], references: [id], onDelete: SetNull)
   agreement           Agreement              @relation(fields: [agreementId], references: [id])
   payoutBatch         PayoutBatch?           @relation(fields: [payoutBatchId], references: [id], onDelete: SetNull)
   parentEntry         CommissionLedgerEntry? @relation("ClawbackParent", fields: [parentEntryId], references: [id], onDelete: SetNull)

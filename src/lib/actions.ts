@@ -14,6 +14,8 @@ import {
   createManualAffiliate,
   createPartnerDeal,
   deletePartnerDeal,
+  markPartnerDocumentSigned,
+  type PartnerSignedDocument,
   DuplicateAffiliateEmailError,
   createPayoutBatch,
   createReferral,
@@ -838,12 +840,17 @@ export type PartnerDealFormState = {
     country: string;
     state: string;
     notes: string;
+    dealValue: string;
   }>;
 };
 
 const dealEmailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const dealUrlRegex = /^https?:\/\/[^\s.]+\.[^\s]+$/i;
 
-function parsePartnerDealInput(formData: FormData): {
+function parsePartnerDealInput(
+  formData: FormData,
+  options: { actorRole?: "PARTNER" | "ADMIN" } = {}
+): {
   data?: PartnerDealInput;
   fieldErrors: NonNullable<PartnerDealFormState["fieldErrors"]>;
 } {
@@ -858,14 +865,20 @@ function parsePartnerDealInput(formData: FormData): {
   const country = getRequiredString(formData, "country").trim();
   const stateValue = getRequiredString(formData, "state").trim();
   const notes = (getOptionalString(formData, "notes") ?? "").trim();
+  const dealValueRaw = (getOptionalString(formData, "dealValue") ?? "").trim();
 
   if (!name) fieldErrors.name = "Name is required.";
   if (!email) {
-    fieldErrors.email = "Email is required.";
+    fieldErrors.email = "Business email is required.";
   } else if (!dealEmailRegex.test(email)) {
-    fieldErrors.email = "Enter a valid email address.";
+    fieldErrors.email = "Enter a valid business email.";
   }
   if (!companyName) fieldErrors.companyName = "Company name is required.";
+  if (!website) {
+    fieldErrors.website = "Business website is required.";
+  } else if (!dealUrlRegex.test(website)) {
+    fieldErrors.website = "Enter a valid URL (e.g. https://example.com).";
+  }
   if (!country) fieldErrors.country = "Country is required.";
   if (!stateValue) fieldErrors.state = "State is required.";
 
@@ -874,6 +887,16 @@ function parsePartnerDealInput(formData: FormData): {
       fieldErrors.phone = "Phone number must be exactly 10 digits.";
     } else if (!phoneCountryCode) {
       fieldErrors.phone = "Select a country code for the phone number.";
+    }
+  }
+
+  let dealValue: number | null = null;
+  if (options.actorRole === "ADMIN" && dealValueRaw) {
+    const parsed = Number(dealValueRaw);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      fieldErrors.dealValue = "Deal value must be a positive number.";
+    } else {
+      dealValue = parsed;
     }
   }
 
@@ -892,7 +915,8 @@ function parsePartnerDealInput(formData: FormData): {
       phoneNumber: phoneNumber || null,
       country,
       state: stateValue,
-      notes: notes || null
+      notes: notes || null,
+      dealValue
     }
   };
 }
@@ -914,7 +938,7 @@ export async function createPartnerDealAction(
     };
   }
 
-  const { data, fieldErrors } = parsePartnerDealInput(formData);
+  const { data, fieldErrors } = parsePartnerDealInput(formData, { actorRole: "PARTNER" });
   if (!data) {
     return { status: "error", fieldErrors };
   }
@@ -942,12 +966,12 @@ export async function updatePartnerDealAction(
     return { status: "error", error: "Deal id is required." };
   }
 
-  const { data, fieldErrors } = parsePartnerDealInput(formData);
+  const role = getRequiredString(formData, "actorRole") === "ADMIN" ? "ADMIN" : "PARTNER";
+
+  const { data, fieldErrors } = parsePartnerDealInput(formData, { actorRole: role });
   if (!data) {
     return { status: "error", fieldErrors };
   }
-
-  const role = getRequiredString(formData, "actorRole") === "ADMIN" ? "ADMIN" : "PARTNER";
 
   try {
     if (role === "ADMIN") {
@@ -1018,4 +1042,29 @@ export async function deletePartnerDealAction(formData: FormData) {
   revalidatePath("/admin/deals");
   revalidatePath("/partner/affiliates");
   revalidatePath("/partner/dashboard");
+}
+
+export async function markPartnerDocumentSignedAction(formData: FormData) {
+  const admin = await requireRole("ADMIN");
+  const partnerAccountId = getRequiredString(formData, "partnerAccountId").trim();
+  const documentTypeRaw = getRequiredString(formData, "documentType").trim();
+  const signedRaw = getRequiredString(formData, "signed").trim();
+
+  if (!partnerAccountId) {
+    throw new Error("Partner is required.");
+  }
+
+  const documentType: PartnerSignedDocument =
+    documentTypeRaw === "AGREEMENT" ? "AGREEMENT" : "NDA";
+  const signed = signedRaw === "true";
+
+  await markPartnerDocumentSigned({
+    partnerAccountId,
+    documentType,
+    adminUserId: admin.id,
+    signed
+  });
+
+  revalidatePath("/admin/partners");
+  revalidatePath(`/admin/partners/${partnerAccountId}`);
 }

@@ -327,8 +327,8 @@ export async function submitPartnerApplication(input: {
           include: { answers: true }
         });
 
-    const applicationStatus = referringVendor ? PartnerApplicationStatus.ACTIVE : PartnerApplicationStatus.SUBMITTED;
-    const accountStatus = referringVendor ? PartnerAccountStatus.ACTIVE : PartnerAccountStatus.INACTIVE;
+    const applicationStatus = PartnerApplicationStatus.SUBMITTED;
+    const accountStatus = PartnerAccountStatus.INACTIVE;
 
     const created =
       existingPartnerAccount?.application ??
@@ -573,6 +573,60 @@ export async function generateVendorReferralCode(input: { partnerAccountId: stri
   });
 }
 
+export type PartnerSignedDocument = "NDA" | "AGREEMENT";
+
+export async function markPartnerDocumentSigned(input: {
+  partnerAccountId: string;
+  documentType: PartnerSignedDocument;
+  adminUserId: string;
+  signed: boolean;
+}) {
+  return prisma.$transaction(async (tx) => {
+    const partner = await tx.partnerAccount.findUnique({
+      where: { id: input.partnerAccountId },
+      select: {
+        id: true,
+        company: true,
+        primaryContactName: true,
+        ndaSignedAt: true,
+        agreementSignedAt: true
+      }
+    });
+
+    if (!partner) {
+      throw new Error("Partner not found.");
+    }
+
+    const now = new Date();
+    const data =
+      input.documentType === "NDA"
+        ? {
+            ndaSignedAt: input.signed ? now : null,
+            ndaMarkedById: input.signed ? input.adminUserId : null
+          }
+        : {
+            agreementSignedAt: input.signed ? now : null,
+            agreementMarkedById: input.signed ? input.adminUserId : null
+          };
+
+    await tx.partnerAccount.update({
+      where: { id: partner.id },
+      data
+    });
+
+    await createAuditLog(tx, {
+      actorUserId: input.adminUserId,
+      entityType: "PartnerAccount",
+      entityId: partner.id,
+      action: input.signed ? "partner.document_signed" : "partner.document_unmarked",
+      summary: `${input.documentType} ${input.signed ? "marked as signed" : "unmarked"} for ${
+        partner.company || partner.primaryContactName
+      }`,
+      nextState: { documentType: input.documentType, signed: input.signed }
+    });
+  });
+}
+
 export async function approvePartnerAccount(input: {
   partnerAccountId: string;
   adminUserId: string;
@@ -589,6 +643,13 @@ export async function approvePartnerAccount(input: {
 
     if (partner.status === PartnerAccountStatus.ACTIVE) {
       return partner;
+    }
+
+    if (!partner.ndaSignedAt) {
+      throw new Error("Mark the NDA as signed before activating this partner.");
+    }
+    if (!partner.agreementSignedAt) {
+      throw new Error("Mark the partner agreement as signed before activating this partner.");
     }
 
     const previousStatus = partner.status;
@@ -637,7 +698,110 @@ export type PartnerDealInput = {
   country: string;
   state: string;
   notes?: string | null;
+  dealValue?: number | null;
 };
+
+async function syncPartnerDealCommission(
+  tx: Prisma.TransactionClient,
+  partnerDealId: string,
+  adminUserId: string
+) {
+  const deal = await tx.partnerDeal.findUnique({
+    where: { id: partnerDealId },
+    include: {
+      partnerAccount: {
+        select: {
+          id: true,
+          tierId: true,
+          company: true,
+          primaryContactName: true
+        }
+      }
+    }
+  });
+
+  if (!deal) {
+    return;
+  }
+
+  const existing = await tx.commissionLedgerEntry.findFirst({
+    where: { partnerDealId: deal.id, type: CommissionEntryType.UPFRONT }
+  });
+
+  if (deal.status !== PartnerDealStatus.APPROVED) {
+    if (existing) {
+      await tx.commissionLedgerEntry.update({
+        where: { id: existing.id },
+        data: { status: CommissionLedgerStatus.VOID }
+      });
+    }
+    return;
+  }
+
+  const tierRule = await tx.tierRule.findFirst({
+    where: { tierId: deal.partnerAccount.tierId, isActive: true, productId: null },
+    orderBy: { updatedAt: "desc" }
+  });
+
+  if (!tierRule) {
+    return;
+  }
+
+  const agreement = await tx.agreement.findFirst({
+    where: {
+      partnerAccountId: deal.partnerAccount.id,
+      status: { in: [AgreementStatus.ACTIVE, AgreementStatus.DRAFT] }
+    },
+    orderBy: [{ effectiveStartDate: "desc" }, { version: "desc" }]
+  });
+
+  if (!agreement) {
+    return;
+  }
+
+  const dealValue = deal.dealValue ? Number(deal.dealValue) : 0;
+  const ruleType = tierRule.upfrontCommissionType;
+  const ruleValue = Number(tierRule.upfrontCommissionValue);
+  const amount = calculateCommissionAmount(dealValue, ruleType, ruleValue);
+  const partnerLabel = deal.partnerAccount.company || deal.partnerAccount.primaryContactName;
+  const description = `Upfront commission for ${deal.name} (${deal.companyName}) — ${partnerLabel}`;
+
+  if (existing) {
+    await tx.commissionLedgerEntry.update({
+      where: { id: existing.id },
+      data: {
+        status: CommissionLedgerStatus.PENDING_APPROVAL,
+        amount,
+        description,
+        agreementId: agreement.id,
+        percentageApplied: ruleType === CommissionType.PERCENTAGE ? ruleValue : null
+      }
+    });
+    return;
+  }
+
+  const created = await tx.commissionLedgerEntry.create({
+    data: {
+      partnerAccountId: deal.partnerAccount.id,
+      partnerDealId: deal.id,
+      agreementId: agreement.id,
+      type: CommissionEntryType.UPFRONT,
+      status: CommissionLedgerStatus.PENDING_APPROVAL,
+      amount,
+      description,
+      percentageApplied: ruleType === CommissionType.PERCENTAGE ? ruleValue : null
+    }
+  });
+
+  await createAuditLog(tx, {
+    actorUserId: adminUserId,
+    entityType: "CommissionLedgerEntry",
+    entityId: created.id,
+    action: "commission.auto_from_deal",
+    summary: `Auto-created commission for approved deal ${deal.name}.`,
+    nextState: { amount: created.amount.toString() }
+  });
+}
 
 export async function createPartnerDeal(input: PartnerDealInput & { partnerAccountId: string }) {
   const partner = await prisma.partnerAccount.findUnique({
@@ -670,7 +834,8 @@ export async function createPartnerDeal(input: PartnerDealInput & { partnerAccou
         phoneNumber: input.phoneNumber || null,
         country: input.country,
         state: input.state,
-        notes: input.notes || null
+        notes: input.notes || null,
+        dealValue: input.dealValue ?? null
       }
     });
 
@@ -695,7 +860,7 @@ export async function updatePartnerDeal(input: {
 }) {
   const deal = await prisma.partnerDeal.findUnique({
     where: { id: input.dealId },
-    select: { id: true, partnerAccountId: true }
+    select: { id: true, partnerAccountId: true, status: true }
   });
 
   if (!deal) {
@@ -708,9 +873,8 @@ export async function updatePartnerDeal(input: {
     }
   }
 
-  return prisma.partnerDeal.update({
-    where: { id: deal.id },
-    data: {
+  return prisma.$transaction(async (tx) => {
+    const updateData: Prisma.PartnerDealUpdateInput = {
       name: input.data.name,
       email: input.data.email.toLowerCase(),
       companyName: input.data.companyName,
@@ -720,7 +884,22 @@ export async function updatePartnerDeal(input: {
       country: input.data.country,
       state: input.data.state,
       notes: input.data.notes || null
+    };
+
+    if (input.actorRole === "ADMIN") {
+      updateData.dealValue = input.data.dealValue ?? null;
     }
+
+    const updated = await tx.partnerDeal.update({
+      where: { id: deal.id },
+      data: updateData
+    });
+
+    if (updated.status === PartnerDealStatus.APPROVED) {
+      await syncPartnerDealCommission(tx, updated.id, input.actorUserId);
+    }
+
+    return updated;
   });
 }
 
@@ -739,20 +918,35 @@ export async function reviewPartnerDeal(input: {
     throw new Error("Deal not found.");
   }
 
-  return prisma.partnerDeal.update({
-    where: { id: deal.id },
-    data: {
-      status:
-        input.decision === "APPROVED" ? PartnerDealStatus.APPROVED : PartnerDealStatus.REJECTED,
-      reviewedAt: new Date(),
-      reviewedById: input.adminUserId,
-      rejectionReason: input.decision === "REJECTED" ? input.rejectionReason ?? null : null
-    }
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.partnerDeal.update({
+      where: { id: deal.id },
+      data: {
+        status:
+          input.decision === "APPROVED"
+            ? PartnerDealStatus.APPROVED
+            : PartnerDealStatus.REJECTED,
+        reviewedAt: new Date(),
+        reviewedById: input.adminUserId,
+        rejectionReason:
+          input.decision === "REJECTED" ? input.rejectionReason ?? null : null
+      }
+    });
+
+    await syncPartnerDealCommission(tx, updated.id, input.adminUserId);
+
+    return updated;
   });
 }
 
 export async function deletePartnerDeal(input: { dealId: string; adminUserId: string }) {
-  await prisma.partnerDeal.delete({ where: { id: input.dealId } });
+  await prisma.$transaction(async (tx) => {
+    await tx.commissionLedgerEntry.updateMany({
+      where: { partnerDealId: input.dealId },
+      data: { status: CommissionLedgerStatus.VOID }
+    });
+    await tx.partnerDeal.delete({ where: { id: input.dealId } });
+  });
 }
 
 export class DuplicateAffiliateEmailError extends Error {
@@ -835,8 +1029,7 @@ export async function createManualAffiliate(input: {
         assignedTierId: defaultTier.id,
         referredByVendorId: partner.id,
         referralCodeUsed: partner.vendorReferralCode,
-        status: PartnerApplicationStatus.ACTIVE,
-        activatedAt: new Date()
+        status: PartnerApplicationStatus.SUBMITTED
       }
     });
 
@@ -853,8 +1046,7 @@ export async function createManualAffiliate(input: {
         phone: input.phone ?? "",
         country,
         city,
-        status: PartnerAccountStatus.ACTIVE,
-        activatedAt: new Date(),
+        status: PartnerAccountStatus.INACTIVE,
         profile: {
           create: {
             promotionChannels: input.socialProfiles ?? "",

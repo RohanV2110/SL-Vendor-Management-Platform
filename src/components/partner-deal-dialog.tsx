@@ -36,6 +36,7 @@ export type PartnerDealEditable = {
   country: string;
   state: string;
   notes: string | null;
+  dealValue: string | null;
 };
 
 type PartnerDealDialogProps = {
@@ -154,7 +155,7 @@ export function PartnerDealDialog({
                     ) : null}
                   </label>
                   <label className="field">
-                    <span>Email</span>
+                    <span>Business email</span>
                     <input
                       className="input"
                       type="email"
@@ -179,13 +180,14 @@ export function PartnerDealDialog({
                     ) : null}
                   </label>
                   <label className="field">
-                    <span>Website (optional)</span>
+                    <span>Business website</span>
                     <input
                       className="input"
                       name="website"
                       type="url"
                       placeholder="https://example.com"
                       defaultValue={existing?.website ?? ""}
+                      required
                     />
                     {getFieldError("website") ? (
                       <small className="form-message">{getFieldError("website")}</small>
@@ -255,6 +257,26 @@ export function PartnerDealDialog({
                       <small className="form-message">{getFieldError("state")}</small>
                     ) : null}
                   </label>
+                  {isEdit && actorRole === "ADMIN" ? (
+                    <label className="field">
+                      <span>Deal value (USD)</span>
+                      <input
+                        className="input"
+                        name="dealValue"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="e.g. 1500"
+                        defaultValue={existing?.dealValue ?? ""}
+                      />
+                      <small className="muted">
+                        Drives commission via the partner&apos;s tier rule.
+                      </small>
+                      {getFieldError("dealValue") ? (
+                        <small className="form-message">{getFieldError("dealValue")}</small>
+                      ) : null}
+                    </label>
+                  ) : null}
                 </div>
 
                 <label className="field">

@@ -4,7 +4,7 @@ import { SectionCard } from "@/components/section-card";
 import { SubmitButton } from "@/components/submit-button";
 import { deletePartnerDealAction, reviewPartnerDealAction } from "@/lib/actions";
 import { prisma } from "@/lib/prisma";
-import { formatDateTime } from "@/lib/utils";
+import { formatCurrency, formatDateTime } from "@/lib/utils";
 
 const STATUS_LABELS: Record<PartnerDealStatus, string> = {
   PENDING_APPROVAL: "Inactive",
@@ -45,6 +45,7 @@ export default async function AdminDealsPage() {
               <th>Name</th>
               <th>Email</th>
               <th>Referred by</th>
+              <th>Value</th>
               <th>Status</th>
               <th>Submitted</th>
               <th aria-label="Actions" />
@@ -67,6 +68,7 @@ export default async function AdminDealsPage() {
                     <br />
                     <span className="muted">{deal.partnerAccount.primaryContactEmail}</span>
                   </td>
+                  <td>{deal.dealValue ? formatCurrency(Number(deal.dealValue)) : "—"}</td>
                   <td>
                     <span className={`deal-status deal-status--${deal.status.toLowerCase()}`}>
                       {STATUS_LABELS[deal.status]}
@@ -113,7 +115,8 @@ export default async function AdminDealsPage() {
                           phoneNumber: deal.phoneNumber,
                           country: deal.country,
                           state: deal.state,
-                          notes: deal.notes
+                          notes: deal.notes,
+                          dealValue: deal.dealValue ? deal.dealValue.toString() : null
                         }}
                       />
                       <form action={deletePartnerDealAction}>
@@ -131,7 +134,7 @@ export default async function AdminDealsPage() {
             })}
             {!deals.length ? (
               <tr>
-                <td colSpan={6}>No deals submitted yet.</td>
+                <td colSpan={7}>No deals submitted yet.</td>
               </tr>
             ) : null}
           </tbody>

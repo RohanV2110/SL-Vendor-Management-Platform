@@ -179,7 +179,8 @@ export default async function PartnerDealsPage({ searchParams }: PartnerDealsPag
                         phoneNumber: deal.phoneNumber,
                         country: deal.country,
                         state: deal.state,
-                        notes: deal.notes
+                        notes: deal.notes,
+                        dealValue: deal.dealValue ? deal.dealValue.toString() : null
                       }}
                     />
                   </td>

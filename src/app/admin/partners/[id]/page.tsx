@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { addInternalNoteAction, approvePartnerAction } from "@/lib/actions";
+import {
+  addInternalNoteAction,
+  approvePartnerAction,
+  markPartnerDocumentSignedAction
+} from "@/lib/actions";
 import { SectionCard } from "@/components/section-card";
 import { StatusBadge } from "@/components/status-badge";
 import { SubmitButton } from "@/components/submit-button";
@@ -49,6 +53,10 @@ export default async function AdminPartnerDetailPage({ params }: { params: Promi
     notFound();
   }
 
+  const ndaSigned = Boolean(partner.ndaSignedAt);
+  const agreementSigned = Boolean(partner.agreementSignedAt);
+  const canActivate = ndaSigned && agreementSigned && partner.status !== "ACTIVE";
+
   return (
     <div className="stack-lg">
       <div className="button-row">
@@ -58,10 +66,105 @@ export default async function AdminPartnerDetailPage({ params }: { params: Promi
         {partner.status !== "ACTIVE" ? (
           <form action={approvePartnerAction}>
             <input type="hidden" name="partnerAccountId" value={partner.id} />
-            <SubmitButton label="Approve partner" pendingLabel="Approving..." />
+            <SubmitButton
+              label="Activate partner"
+              pendingLabel="Activating..."
+              disabled={!canActivate}
+              title={
+                canActivate
+                  ? undefined
+                  : "Mark NDA and agreement as signed before activating."
+              }
+            />
           </form>
         ) : null}
       </div>
+
+      {partner.status !== "ACTIVE" ? (
+        <SectionCard
+          title="NDA & agreement approval"
+          eyebrow="Required before activation"
+        >
+          <div className="stack-md">
+            <p className="muted">
+              Confirm the partner has signed both documents (e.g. via email) before
+              activating their account.
+            </p>
+            <div className="two-col">
+              <div className="note">
+                <div
+                  className="inline-form"
+                  style={{ justifyContent: "space-between", gap: 8 }}
+                >
+                  <strong>NDA</strong>
+                  <span
+                    className={`deal-status deal-status--${
+                      ndaSigned ? "approved" : "pending_approval"
+                    }`}
+                  >
+                    {ndaSigned ? "Signed" : "Not signed"}
+                  </span>
+                </div>
+                <p className="muted">
+                  {ndaSigned
+                    ? `Marked signed on ${formatDateTime(partner.ndaSignedAt)}`
+                    : "Awaiting confirmation from the partner."}
+                </p>
+                <form action={markPartnerDocumentSignedAction}>
+                  <input type="hidden" name="partnerAccountId" value={partner.id} />
+                  <input type="hidden" name="documentType" value="NDA" />
+                  <input
+                    type="hidden"
+                    name="signed"
+                    value={ndaSigned ? "false" : "true"}
+                  />
+                  <SubmitButton
+                    className={ndaSigned ? "button button-secondary" : "button"}
+                    label={ndaSigned ? "Unmark NDA" : "Mark NDA as signed"}
+                    pendingLabel="Saving..."
+                  />
+                </form>
+              </div>
+              <div className="note">
+                <div
+                  className="inline-form"
+                  style={{ justifyContent: "space-between", gap: 8 }}
+                >
+                  <strong>Partner agreement</strong>
+                  <span
+                    className={`deal-status deal-status--${
+                      agreementSigned ? "approved" : "pending_approval"
+                    }`}
+                  >
+                    {agreementSigned ? "Signed" : "Not signed"}
+                  </span>
+                </div>
+                <p className="muted">
+                  {agreementSigned
+                    ? `Marked signed on ${formatDateTime(partner.agreementSignedAt)}`
+                    : "Awaiting confirmation from the partner."}
+                </p>
+                <form action={markPartnerDocumentSignedAction}>
+                  <input type="hidden" name="partnerAccountId" value={partner.id} />
+                  <input type="hidden" name="documentType" value="AGREEMENT" />
+                  <input
+                    type="hidden"
+                    name="signed"
+                    value={agreementSigned ? "false" : "true"}
+                  />
+                  <SubmitButton
+                    className={agreementSigned ? "button button-secondary" : "button"}
+                    label={
+                      agreementSigned ? "Unmark agreement" : "Mark agreement as signed"
+                    }
+                    pendingLabel="Saving..."
+                  />
+                </form>
+              </div>
+            </div>
+          </div>
+        </SectionCard>
+      ) : null}
 
       <SectionCard title={partner.company || partner.primaryContactName} eyebrow="Partner profile" action={<StatusBadge value={partner.status} />}>
         <div className="three-col">

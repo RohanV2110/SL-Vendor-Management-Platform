@@ -35,8 +35,8 @@ export default async function PartnerLayout({ children }: { children: React.Reac
     <AppShell title={`Welcome back, ${firstName}`} nav={nav}>
       {!isActive ? (
         <div className="status-banner status-banner--warning" role="status">
-          <strong>Your account is not active yet.</strong>
-          <span>Please contact the admin for approval.</span>
+          <strong>Account needs to be activated.</strong>
+          <span>Please contact the admin to unlock referrals and deals.</span>
         </div>
       ) : null}
       {showActivatedToast ? <PartnerActivationToast /> : null}
