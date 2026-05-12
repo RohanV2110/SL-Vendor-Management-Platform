@@ -26,6 +26,7 @@ services:
       UPLOAD_DIR: /app/uploads
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-partners@sugarleather.ai}
+      ARIES_WEBHOOK_SECRET: ${ARIES_WEBHOOK_SECRET:-}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_CONNECT_REFRESH_URL: ${VMS_STRIPE_CONNECT_REFRESH_URL:-http://localhost:3001/partner/dashboard}
       STRIPE_CONNECT_RETURN_URL: ${VMS_STRIPE_CONNECT_RETURN_URL:-http://localhost:3001/partner/dashboard}
