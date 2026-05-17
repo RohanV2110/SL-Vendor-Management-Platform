@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import Link from "next/link";
-import { MoreHorizontal, X } from "lucide-react";
+import { Layers, MoreHorizontal, X } from "lucide-react";
+import { deletePartnerAccountAction, updatePartnerTierAction } from "@/lib/actions";
 import { CopyButton } from "@/components/copy-button";
 import { StatusBadge } from "@/components/status-badge";
+import { SubmitButton } from "@/components/submit-button";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
 
 export type PartnerDialogReferral = {
@@ -13,6 +15,11 @@ export type PartnerDialogReferral = {
   status: string;
   productName: string;
   submittedAt: string;
+};
+
+export type PartnerDialogTier = {
+  id: string;
+  name: string;
 };
 
 export type PartnerDialogData = {
@@ -27,6 +34,7 @@ export type PartnerDialogData = {
   createdAt: string;
   stripeOnboardingComplete: boolean;
   stripeAccountId: string | null;
+  tierId: string;
   tierName: string | null;
   vendorReferralCode: string | null;
   vendorReferralCodeActive: boolean;
@@ -43,12 +51,34 @@ export type PartnerDialogData = {
 
 type PartnerDetailsDialogProps = {
   partner: PartnerDialogData;
+  tiers: PartnerDialogTier[];
 };
 
-export function PartnerDetailsDialog({ partner }: PartnerDetailsDialogProps) {
+export function PartnerDetailsDialog({ partner, tiers }: PartnerDetailsDialogProps) {
   const [open, setOpen] = useState(false);
+  const [tierId, setTierId] = useState(partner.tierId);
+  const [isPending, startTransition] = useTransition();
 
   const triggerLabel = partner.company || partner.primaryContactName || partner.primaryContactEmail;
+  const currentTierName =
+    tiers.find((tier) => tier.id === tierId)?.name ?? partner.tierName ?? "Unassigned";
+
+  function handleDelete() {
+    const label = partner.company || partner.primaryContactName;
+    if (
+      !window.confirm(
+        `Delete partner "${label}"? This removes their account, application, and related records. This cannot be undone.`
+      )
+    ) {
+      return;
+    }
+
+    const formData = new FormData();
+    formData.set("partnerAccountId", partner.id);
+    startTransition(() => {
+      void deletePartnerAccountAction(formData);
+    });
+  }
 
   return (
     <>
@@ -70,10 +100,10 @@ export function PartnerDetailsDialog({ partner }: PartnerDetailsDialogProps) {
             onMouseDown={(event) => event.stopPropagation()}
           >
             <div className="dialog-header">
-              <div>
+              <div className="dialog-header__copy">
                 <p className="eyebrow">Partner details</p>
                 <h2>{partner.company || partner.primaryContactName}</h2>
-                <p className="muted">{partner.primaryContactEmail}</p>
+                <p className="muted">Sugar &amp; Leather · {partner.primaryContactEmail}</p>
               </div>
               <button
                 aria-label="Close details"
@@ -94,13 +124,50 @@ export function PartnerDetailsDialog({ partner }: PartnerDetailsDialogProps) {
                   <br />
                   <span className="muted">Joined {formatDate(partner.createdAt)}</span>
                 </p>
-                <p className="note">
-                  <strong>Tier</strong>
-                  <br />
-                  {partner.tierName ?? "—"}
-                  <br />
-                  <span className="muted">Activated {formatDate(partner.activatedAt)}</span>
-                </p>
+                <div className="partner-tier-card">
+                  <div className="partner-tier-card__header">
+                    <div className="partner-tier-card__icon" aria-hidden>
+                      <Layers size={20} strokeWidth={1.75} />
+                    </div>
+                    <div className="partner-tier-card__title">
+                      <p className="partner-tier-card__eyebrow">Commission tier</p>
+                      <p className="partner-tier-card__name">{currentTierName}</p>
+                    </div>
+                  </div>
+
+                  <form action={updatePartnerTierAction} className="partner-tier-card__form">
+                    <input type="hidden" name="partnerAccountId" value={partner.id} />
+                    <label className="partner-tier-card__field">
+                      <span>Change tier</span>
+                      <div className="partner-tier-card__select-row">
+                        <select
+                          className="select partner-tier-card__select"
+                          name="tierId"
+                          value={tierId}
+                          onChange={(event) => setTierId(event.target.value)}
+                          required
+                        >
+                          {tiers.map((tier) => (
+                            <option key={tier.id} value={tier.id}>
+                              {tier.name}
+                            </option>
+                          ))}
+                        </select>
+                        <SubmitButton
+                          className="button partner-tier-card__save"
+                          label="Save"
+                          pendingLabel="Saving..."
+                        />
+                      </div>
+                    </label>
+                  </form>
+
+                  <p className="partner-tier-card__meta">
+                    {partner.activatedAt
+                      ? `Activated ${formatDate(partner.activatedAt)}`
+                      : "Not activated yet"}
+                  </p>
+                </div>
                 <p className="note">
                   <strong>Partner ID</strong>
                   <br />
@@ -216,10 +283,18 @@ export function PartnerDetailsDialog({ partner }: PartnerDetailsDialogProps) {
                 )}
               </div>
 
-              <div className="button-row">
+              <div className="dialog-footer button-row">
                 <Link className="button button-secondary" href={partner.detailHref}>
                   Open full profile
                 </Link>
+                <button
+                  className="button button-delete"
+                  type="button"
+                  disabled={isPending}
+                  onClick={handleDelete}
+                >
+                  {isPending ? "Deleting..." : "Delete partner"}
+                </button>
               </div>
             </div>
           </div>

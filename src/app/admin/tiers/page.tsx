@@ -147,17 +147,15 @@ export default async function AdminTiersPage() {
                     <span>Quarterly commission minimum</span>
                     <input className="input" name="quarterlyCommissionMin" type="number" min="0" step="0.01" defaultValue={tier.rules[0]?.quarterlyCommissionMin?.toString() ?? ""} />
                   </label>
-                  <div className="button-row" style={{ alignSelf: "end" }}>
-                    <SubmitButton className="button button-secondary" label="Edit tier" pendingLabel="Saving..." />
+                  <div className="button-row tier-form-footer-actions">
+                    <SubmitButton className="button button-secondary" label="Save" pendingLabel="Saving..." />
+                    <ConfirmSubmitButton
+                      formAction={deleteTierAction}
+                      className="button button-delete table-action-button"
+                      label="Delete tier"
+                      confirmMessage="Are you sure you want to delete this tier? This action cannot be undone."
+                    />
                   </div>
-                </form>
-                <form action={deleteTierAction}>
-                  <input type="hidden" name="tierId" value={tier.id} />
-                  <ConfirmSubmitButton
-                    className="button button-ghost"
-                    label="Delete tier"
-                    confirmMessage="Are you sure you want to delete this tier? This action cannot be undone."
-                  />
                 </form>
               </div>
             </div>

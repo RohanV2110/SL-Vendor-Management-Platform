@@ -1,35 +1,42 @@
 import { PartnerApplicationStatus, ReferralStatus } from "@prisma/client";
+import { AdminNotificationList } from "@/components/admin/admin-notification-list";
 import { prisma } from "@/lib/prisma";
 import { SectionCard } from "@/components/section-card";
-import { formatCurrency, formatDateTime } from "@/lib/utils";
-import { StatusBadge } from "@/components/status-badge";
+import { formatCurrency } from "@/lib/utils";
+import { requireRole } from "@/lib/auth-helpers";
 
 export default async function AdminOverviewPage() {
-  const [applications, pendingApplications, pendingReferrals, ledger, notifications] = await Promise.all([
-    prisma.partnerApplication.count(),
-    prisma.partnerApplication.count({
-      where: {
-        status: {
-          in: [
-            PartnerApplicationStatus.SUBMITTED,
-            PartnerApplicationStatus.UNDER_REVIEW,
-            PartnerApplicationStatus.SIGNED_DOCUMENTS_UPLOADED
-          ]
+  const admin = await requireRole("ADMIN");
+
+  const [applications, pendingApplications, pendingReferrals, ledger, notifications] =
+    await Promise.all([
+      prisma.partnerApplication.count(),
+      prisma.partnerApplication.count({
+        where: {
+          status: {
+            in: [
+              PartnerApplicationStatus.SUBMITTED,
+              PartnerApplicationStatus.UNDER_REVIEW,
+              PartnerApplicationStatus.SIGNED_DOCUMENTS_UPLOADED
+            ]
+          }
         }
-      }
-    }),
-    prisma.referral.count({
-      where: { status: { in: [ReferralStatus.SUBMITTED, ReferralStatus.UNDER_REVIEW] } }
-    }),
-    prisma.commissionLedgerEntry.aggregate({
-      _sum: { amount: true }
-    }),
-    prisma.notification.findMany({
-      where: { user: { is: { role: "ADMIN" } } },
-      orderBy: { createdAt: "desc" },
-      take: 8
-    })
-  ]);
+      }),
+      prisma.referral.count({
+        where: { status: { in: [ReferralStatus.SUBMITTED, ReferralStatus.UNDER_REVIEW] } }
+      }),
+      prisma.commissionLedgerEntry.aggregate({
+        _sum: { amount: true }
+      }),
+      prisma.notification.findMany({
+        where: {
+          userId: admin.id,
+          readAt: null
+        },
+        orderBy: { createdAt: "desc" },
+        take: 8
+      })
+    ]);
 
   return (
     <div className="stack-lg">
@@ -52,23 +59,15 @@ export default async function AdminOverviewPage() {
         </div>
       </div>
 
-      <SectionCard title="Recent notifications" eyebrow="Internal alerts">
-        {notifications.length ? (
-          <div className="stack-md">
-            {notifications.map((notification) => (
-              <div className="note" key={notification.id}>
-                <div className="inline-form" style={{ justifyContent: "space-between" }}>
-                  <strong>{notification.title}</strong>
-                  <span className="muted">{formatDateTime(notification.createdAt)}</span>
-                </div>
-                <p className="muted">{notification.body}</p>
-                {notification.readAt ? <StatusBadge value="READ" /> : <StatusBadge value="UNREAD" />}
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="empty-state">No admin notifications yet.</div>
-        )}
+      <SectionCard title="Recent notifications">
+        <AdminNotificationList
+          notifications={notifications.map((notification) => ({
+            id: notification.id,
+            title: notification.title,
+            body: notification.body,
+            createdAt: notification.createdAt.toISOString()
+          }))}
+        />
       </SectionCard>
     </div>
   );

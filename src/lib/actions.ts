@@ -15,6 +15,9 @@ import {
   createPartnerDeal,
   deletePartnerDeal,
   markPartnerDocumentSigned,
+  markAdminNotificationRead,
+  deletePartnerAccount,
+  updatePartnerTier,
   type PartnerSignedDocument,
   DuplicateAffiliateEmailError,
   createPayoutBatch,
@@ -32,6 +35,7 @@ import {
   submitPartnerApplication,
   updateCommissionStatus,
   updatePartnerDeal,
+  updatePartnerDealStage,
   upsertDeal,
   uploadPartnerDocument,
   verifyPartnerDocument,
@@ -1042,6 +1046,86 @@ export async function deletePartnerDealAction(formData: FormData) {
   revalidatePath("/admin/deals");
   revalidatePath("/partner/affiliates");
   revalidatePath("/partner/dashboard");
+}
+
+export async function updatePartnerDealStageAction(formData: FormData) {
+  const admin = await requireRole("ADMIN");
+  const dealId = getRequiredString(formData, "dealId").trim();
+  const stageRaw = getRequiredString(formData, "stage").trim();
+
+  if (!dealId) {
+    throw new Error("Deal id is required.");
+  }
+
+  const stage =
+    stageRaw === "PROCESSING" || stageRaw === "WON" || stageRaw === "LOST" ? stageRaw : null;
+
+  if (!stage) {
+    throw new Error("Invalid stage.");
+  }
+
+  await updatePartnerDealStage({
+    dealId,
+    stage,
+    adminUserId: admin.id
+  });
+
+  revalidatePath("/admin/deals");
+  revalidatePath("/partner/affiliates");
+  revalidatePath("/partner/dashboard");
+}
+
+export async function updatePartnerTierAction(formData: FormData) {
+  const admin = await requireRole("ADMIN");
+  const partnerAccountId = getRequiredString(formData, "partnerAccountId").trim();
+  const tierId = getRequiredString(formData, "tierId").trim();
+
+  if (!partnerAccountId || !tierId) {
+    throw new Error("Partner and tier are required.");
+  }
+
+  await updatePartnerTier({
+    partnerAccountId,
+    tierId,
+    adminUserId: admin.id
+  });
+
+  revalidatePath("/admin/partners");
+  revalidatePath(`/admin/partners/${partnerAccountId}`);
+}
+
+export async function deletePartnerAccountAction(formData: FormData) {
+  const admin = await requireRole("ADMIN");
+  const partnerAccountId = getRequiredString(formData, "partnerAccountId").trim();
+
+  if (!partnerAccountId) {
+    throw new Error("Partner is required.");
+  }
+
+  await deletePartnerAccount({
+    partnerAccountId,
+    adminUserId: admin.id
+  });
+
+  revalidatePath("/admin/partners");
+  revalidatePath("/admin");
+  redirect("/admin/partners");
+}
+
+export async function markAdminNotificationReadAction(formData: FormData) {
+  const admin = await requireRole("ADMIN");
+  const notificationId = getRequiredString(formData, "notificationId").trim();
+
+  if (!notificationId) {
+    throw new Error("Notification id is required.");
+  }
+
+  await markAdminNotificationRead({
+    notificationId,
+    adminUserId: admin.id
+  });
+
+  revalidatePath("/admin");
 }
 
 export async function markPartnerDocumentSignedAction(formData: FormData) {

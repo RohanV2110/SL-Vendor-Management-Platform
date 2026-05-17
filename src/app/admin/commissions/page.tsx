@@ -1,9 +1,9 @@
 import { PartnerAccountStatus } from "@prisma/client";
 import {
   createClawbackAction,
-  createCommissionAction,
   updateCommissionStatusAction
 } from "@/lib/actions";
+import { AdminAddCommissionDialog } from "@/components/admin/admin-add-commission-dialog";
 import { SectionCard } from "@/components/section-card";
 import { StatusBadge } from "@/components/status-badge";
 import { SubmitButton } from "@/components/submit-button";
@@ -11,8 +11,6 @@ import { prisma } from "@/lib/prisma";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 
 const statusTargets = ["APPROVED", "SCHEDULED", "PAYABLE", "PAID", "VOID"] as const;
-const newEntryTypes = ["UPFRONT", "TRAILING", "ADJUSTMENT"] as const;
-const newEntryStatuses = ["APPROVED", "SCHEDULED", "PAYABLE", "PAID"] as const;
 
 export default async function AdminCommissionsPage() {
   const [entries, partners] = await Promise.all([
@@ -35,84 +33,11 @@ export default async function AdminCommissionsPage() {
 
   return (
     <div className="stack-lg">
-      <SectionCard title="Add commission" eyebrow="Manual ledger entry">
-        {partners.length === 0 ? (
-          <div className="empty-state">
-            No partners available yet. Create a partner before adding a manual commission.
-          </div>
-        ) : (
-          <form action={createCommissionAction} className="stack-md">
-            <div className="two-col">
-              <label className="field">
-                <span>Partner</span>
-                <select className="select" name="partnerAccountId" required defaultValue="">
-                  <option value="" disabled>
-                    Select a partner
-                  </option>
-                  {partners.map((partner) => (
-                    <option key={partner.id} value={partner.id}>
-                      {partner.company}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="field">
-                <span>Type</span>
-                <select className="select" name="type" defaultValue="UPFRONT" required>
-                  {newEntryTypes.map((type) => (
-                    <option key={type} value={type}>
-                      {type}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-
-            <div className="two-col">
-              <label className="field">
-                <span>Amount (USD)</span>
-                <input
-                  className="input"
-                  name="amount"
-                  type="number"
-                  step="0.01"
-                  placeholder="e.g. 250.00"
-                  required
-                />
-              </label>
-              <label className="field">
-                <span>Status</span>
-                <select className="select" name="status" defaultValue="APPROVED">
-                  {newEntryStatuses.map((status) => (
-                    <option key={status} value={status}>
-                      {status}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-
-            <label className="field">
-              <span>Scheduled for (optional)</span>
-              <input className="input" name="scheduledFor" type="date" />
-            </label>
-
-            <label className="field">
-              <span>Description</span>
-              <input
-                className="input"
-                name="description"
-                placeholder="What is this commission for?"
-                required
-              />
-            </label>
-
-            <SubmitButton className="button" label="Add commission" pendingLabel="Saving..." />
-          </form>
-        )}
-      </SectionCard>
-
-      <SectionCard title="Commission ledger" eyebrow="Upfront, trailing, payout staging, clawbacks">
+      <SectionCard
+        title="Commission ledger"
+        eyebrow="Upfront, trailing, payout staging, clawbacks"
+        action={<AdminAddCommissionDialog partners={partners} />}
+      >
         <div className="table-wrap">
           <table>
             <thead>

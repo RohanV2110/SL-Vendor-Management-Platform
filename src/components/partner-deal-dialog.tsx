@@ -1,48 +1,23 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { Pencil } from "lucide-react";
 import {
   createPartnerDealAction,
   updatePartnerDealAction,
   type PartnerDealFormState
 } from "@/lib/actions";
-import { COUNTRIES } from "@/lib/locations";
+import { PartnerDealFormFields, type PartnerDealEditable } from "@/components/partner-deal-form-fields";
+
+export type { PartnerDealEditable };
 
 const initialState: PartnerDealFormState = { status: "idle" };
-
-const dialOptions = (() => {
-  const seen = new Set<string>();
-  return COUNTRIES.flatMap((country) => {
-    const key = `${country.dialCode}-${country.iso}`;
-    if (seen.has(key)) return [];
-    seen.add(key);
-    return [
-      {
-        value: country.dialCode,
-        label: `${country.dialCode} (${country.iso})`
-      }
-    ];
-  }).sort((a, b) => a.label.localeCompare(b.label));
-})();
-
-export type PartnerDealEditable = {
-  id: string;
-  name: string;
-  email: string;
-  companyName: string;
-  website: string | null;
-  phoneCountryCode: string | null;
-  phoneNumber: string | null;
-  country: string;
-  state: string;
-  notes: string | null;
-  dealValue: string | null;
-};
 
 type PartnerDealDialogProps = {
   mode: "create" | "edit";
   triggerLabel?: string;
   triggerClassName?: string;
+  triggerVariant?: "default" | "icon";
   disabled?: boolean;
   actorRole?: "PARTNER" | "ADMIN";
   existing?: PartnerDealEditable;
@@ -52,6 +27,7 @@ export function PartnerDealDialog({
   mode,
   triggerLabel,
   triggerClassName,
+  triggerVariant = "default",
   disabled = false,
   actorRole = "PARTNER",
   existing
@@ -96,17 +72,19 @@ export function PartnerDealDialog({
 
   const defaultTriggerLabel = isEdit ? "Edit" : "Add Deal";
   const defaultTriggerClass = isEdit ? "button button-secondary" : "button";
+  const useIconTrigger = triggerVariant === "icon";
 
   return (
     <>
       <button
-        className={triggerClassName ?? defaultTriggerClass}
+        aria-label={useIconTrigger ? (isEdit ? "Edit deal" : "Add deal") : undefined}
+        className={useIconTrigger ? "icon-button" : (triggerClassName ?? defaultTriggerClass)}
         type="button"
         onClick={() => setOpen(true)}
         disabled={disabled}
         aria-disabled={disabled || undefined}
       >
-        {triggerLabel ?? defaultTriggerLabel}
+        {useIconTrigger ? <Pencil size={18} /> : (triggerLabel ?? defaultTriggerLabel)}
       </button>
       {open ? (
         <div className="dialog-backdrop" role="presentation" onMouseDown={close}>
@@ -141,156 +119,16 @@ export function PartnerDealDialog({
                   </div>
                 ) : null}
 
-                <div className="two-col">
-                  <label className="field">
-                    <span>Name</span>
-                    <input
-                      className="input"
-                      name="name"
-                      defaultValue={existing?.name ?? ""}
-                      required
-                    />
-                    {getFieldError("name") ? (
-                      <small className="form-message">{getFieldError("name")}</small>
-                    ) : null}
-                  </label>
-                  <label className="field">
-                    <span>Business email</span>
-                    <input
-                      className="input"
-                      type="email"
-                      name="email"
-                      defaultValue={existing?.email ?? ""}
-                      required
-                    />
-                    {getFieldError("email") ? (
-                      <small className="form-message">{getFieldError("email")}</small>
-                    ) : null}
-                  </label>
-                  <label className="field">
-                    <span>Company name</span>
-                    <input
-                      className="input"
-                      name="companyName"
-                      defaultValue={existing?.companyName ?? ""}
-                      required
-                    />
-                    {getFieldError("companyName") ? (
-                      <small className="form-message">{getFieldError("companyName")}</small>
-                    ) : null}
-                  </label>
-                  <label className="field">
-                    <span>Business website</span>
-                    <input
-                      className="input"
-                      name="website"
-                      type="url"
-                      placeholder="https://example.com"
-                      defaultValue={existing?.website ?? ""}
-                      required
-                    />
-                    {getFieldError("website") ? (
-                      <small className="form-message">{getFieldError("website")}</small>
-                    ) : null}
-                  </label>
-                  <label className="field">
-                    <span>Mobile number (optional)</span>
-                    <div className="phone-row">
-                      <select
-                        className="select phone-row__code"
-                        name="phoneCountryCode"
-                        value={dialCode}
-                        onChange={(event) => setDialCode(event.target.value)}
-                        aria-label="Country code"
-                      >
-                        <option value="">Code</option>
-                        {dialOptions.map((option) => (
-                          <option key={option.label} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                      <input
-                        className="input phone-row__number"
-                        name="phoneNumber"
-                        type="tel"
-                        inputMode="numeric"
-                        pattern="\d{10}"
-                        maxLength={10}
-                        placeholder="10-digit number"
-                        defaultValue={existing?.phoneNumber ?? ""}
-                      />
-                    </div>
-                    {getFieldError("phone") ? (
-                      <small className="form-message">{getFieldError("phone")}</small>
-                    ) : null}
-                  </label>
-                  <label className="field">
-                    <span>Country</span>
-                    <select
-                      className="select"
-                      name="country"
-                      value={country}
-                      onChange={(event) => setCountry(event.target.value)}
-                      required
-                    >
-                      <option value="">Select a country</option>
-                      {COUNTRIES.map((entry) => (
-                        <option key={entry.iso} value={entry.name}>
-                          {entry.name}
-                        </option>
-                      ))}
-                    </select>
-                    {getFieldError("country") ? (
-                      <small className="form-message">{getFieldError("country")}</small>
-                    ) : null}
-                  </label>
-                  <label className="field">
-                    <span>State</span>
-                    <input
-                      className="input"
-                      name="state"
-                      defaultValue={existing?.state ?? ""}
-                      required
-                    />
-                    {getFieldError("state") ? (
-                      <small className="form-message">{getFieldError("state")}</small>
-                    ) : null}
-                  </label>
-                  {isEdit && actorRole === "ADMIN" ? (
-                    <label className="field">
-                      <span>Deal value (USD)</span>
-                      <input
-                        className="input"
-                        name="dealValue"
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        placeholder="e.g. 1500"
-                        defaultValue={existing?.dealValue ?? ""}
-                      />
-                      <small className="muted">
-                        Drives commission via the partner&apos;s tier rule.
-                      </small>
-                      {getFieldError("dealValue") ? (
-                        <small className="form-message">{getFieldError("dealValue")}</small>
-                      ) : null}
-                    </label>
-                  ) : null}
-                </div>
-
-                <label className="field">
-                  <span>Note</span>
-                  <textarea
-                    className="textarea"
-                    name="notes"
-                    defaultValue={existing?.notes ?? ""}
-                    rows={4}
-                  />
-                  {getFieldError("notes") ? (
-                    <small className="form-message">{getFieldError("notes")}</small>
-                  ) : null}
-                </label>
+                <PartnerDealFormFields
+                  existing={existing}
+                  country={country}
+                  setCountry={setCountry}
+                  dialCode={dialCode}
+                  setDialCode={setDialCode}
+                  getFieldError={getFieldError}
+                  isEdit={isEdit}
+                  actorRole={actorRole}
+                />
 
                 <div className="button-row">
                   <button className="button" type="submit" disabled={isPending}>
@@ -302,11 +140,7 @@ export function PartnerDealDialog({
                         ? "Save changes"
                         : "Add deal"}
                   </button>
-                  <button
-                    className="button button-secondary"
-                    type="button"
-                    onClick={close}
-                  >
+                  <button className="button button-secondary" type="button" onClick={close}>
                     Cancel
                   </button>
                 </div>

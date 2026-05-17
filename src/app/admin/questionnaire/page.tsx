@@ -34,7 +34,7 @@ export default async function AdminQuestionnairePage() {
                   <form action={deleteQuestionPromptAction}>
                     <input type="hidden" name="id" value={prompt.id} />
                     <SubmitButton
-                      className="button button-ghost table-action-button"
+                      className="button button-delete table-action-button"
                       label="Delete"
                       pendingLabel="Removing..."
                     />

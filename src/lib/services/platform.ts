@@ -10,6 +10,7 @@ import {
   DealStage,
   PartnerAccountStatus,
   PartnerApplicationStatus,
+  PartnerDealStage,
   PartnerDealStatus,
   PayoutBatchStatus,
   Prisma,
@@ -688,6 +689,128 @@ export async function approvePartnerAccount(input: {
   });
 }
 
+export async function updatePartnerTier(input: {
+  partnerAccountId: string;
+  tierId: string;
+  adminUserId: string;
+}) {
+  return prisma.$transaction(async (tx) => {
+    const tier = await tx.tier.findFirst({
+      where: { id: input.tierId, isActive: true }
+    });
+    if (!tier) {
+      throw new Error("Tier not found.");
+    }
+
+    const existing = await tx.partnerAccount.findUnique({
+      where: { id: input.partnerAccountId },
+      select: { id: true, tierId: true, company: true, applicationId: true }
+    });
+    if (!existing) {
+      throw new Error("Partner not found.");
+    }
+
+    const partner = await tx.partnerAccount.update({
+      where: { id: input.partnerAccountId },
+      data: { tierId: input.tierId },
+      include: { tier: true }
+    });
+
+    await tx.agreement.updateMany({
+      where: {
+        partnerAccountId: input.partnerAccountId,
+        status: { in: [AgreementStatus.DRAFT, AgreementStatus.ACTIVE] }
+      },
+      data: { tierId: input.tierId }
+    });
+
+    await tx.partnerApplication.update({
+      where: { id: existing.applicationId },
+      data: { assignedTierId: input.tierId }
+    });
+
+    await createAuditLog(tx, {
+      actorUserId: input.adminUserId,
+      entityType: "PartnerAccount",
+      entityId: partner.id,
+      action: "partner.tier_updated",
+      summary: `Tier updated for ${partner.company}`,
+      previousState: { tierId: existing.tierId },
+      nextState: { tierId: input.tierId, tierName: tier.name }
+    });
+
+    return partner;
+  });
+}
+
+export async function deletePartnerAccount(input: {
+  partnerAccountId: string;
+  adminUserId: string;
+}) {
+  return prisma.$transaction(async (tx) => {
+    const partner = await tx.partnerAccount.findUnique({
+      where: { id: input.partnerAccountId },
+      select: {
+        id: true,
+        applicationId: true,
+        company: true,
+        primaryContactName: true
+      }
+    });
+
+    if (!partner) {
+      throw new Error("Partner not found.");
+    }
+
+    await tx.partnerAccount.updateMany({
+      where: { referredByVendorId: partner.id },
+      data: { referredByVendorId: null }
+    });
+    await tx.partnerApplication.updateMany({
+      where: { referredByVendorId: partner.id },
+      data: { referredByVendorId: null }
+    });
+    await tx.user.updateMany({
+      where: { partnerAccountId: partner.id },
+      data: { partnerAccountId: null, isActive: false }
+    });
+
+    await createAuditLog(tx, {
+      actorUserId: input.adminUserId,
+      entityType: "PartnerAccount",
+      entityId: partner.id,
+      action: "partner.deleted",
+      summary: `Deleted partner ${partner.company || partner.primaryContactName}`
+    });
+
+    await tx.partnerAccount.delete({ where: { id: partner.id } });
+    await tx.applicationAnswer.deleteMany({ where: { applicationId: partner.applicationId } });
+    await tx.partnerApplication.delete({ where: { id: partner.applicationId } });
+  });
+}
+
+export async function markAdminNotificationRead(input: {
+  notificationId: string;
+  adminUserId: string;
+}) {
+  const notification = await prisma.notification.findFirst({
+    where: { id: input.notificationId, userId: input.adminUserId }
+  });
+
+  if (!notification) {
+    throw new Error("Notification not found.");
+  }
+
+  if (notification.readAt) {
+    return notification;
+  }
+
+  return prisma.notification.update({
+    where: { id: notification.id },
+    data: { readAt: new Date() }
+  });
+}
+
 export type PartnerDealInput = {
   name: string;
   email: string;
@@ -934,6 +1057,44 @@ export async function reviewPartnerDeal(input: {
     });
 
     await syncPartnerDealCommission(tx, updated.id, input.adminUserId);
+
+    return updated;
+  });
+}
+
+export async function updatePartnerDealStage(input: {
+  dealId: string;
+  stage: PartnerDealStage;
+  adminUserId: string;
+}) {
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.partnerDeal.findUnique({
+      where: { id: input.dealId },
+      select: { id: true, name: true, companyName: true, stage: true }
+    });
+
+    if (!existing) {
+      throw new Error("Deal not found.");
+    }
+
+    if (existing.stage === input.stage) {
+      return existing;
+    }
+
+    const updated = await tx.partnerDeal.update({
+      where: { id: input.dealId },
+      data: { stage: input.stage }
+    });
+
+    await createAuditLog(tx, {
+      actorUserId: input.adminUserId,
+      entityType: "PartnerDeal",
+      entityId: updated.id,
+      action: "partner_deal.stage_updated",
+      summary: `Deal stage set to ${input.stage} for ${existing.name} (${existing.companyName}).`,
+      previousState: { stage: existing.stage },
+      nextState: { stage: input.stage }
+    });
 
     return updated;
   });

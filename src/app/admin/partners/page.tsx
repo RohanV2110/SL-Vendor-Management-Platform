@@ -5,9 +5,32 @@ import { PartnerDetailsDialog, type PartnerDialogData } from "@/components/admin
 import { prisma } from "@/lib/prisma";
 import { buildAriesReferralLink } from "@/lib/referral-links";
 
-export default async function AdminPartnersPage() {
+const PAGE_SIZE = 10;
+
+type AdminPartnersPageProps = {
+  searchParams?: Promise<{ page?: string }>;
+};
+
+export default async function AdminPartnersPage({ searchParams }: AdminPartnersPageProps) {
+  const params = searchParams ? await searchParams : {};
+  const requestedPage = Math.max(1, Number(params.page ?? 1) || 1);
+
+  const [totalCount, tiers] = await Promise.all([
+    prisma.partnerAccount.count(),
+    prisma.tier.findMany({
+      where: { isActive: true },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true }
+    })
+  ]);
+
+  const pageCount = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const page = Math.min(requestedPage, pageCount);
+
   const partners = await prisma.partnerAccount.findMany({
     orderBy: { createdAt: "desc" },
+    skip: (page - 1) * PAGE_SIZE,
+    take: PAGE_SIZE,
     include: {
       tier: true,
       profile: true,
@@ -22,11 +45,14 @@ export default async function AdminPartnersPage() {
     }
   });
 
+  const pageHref = (nextPage: number) => `/admin/partners?page=${nextPage}`;
+
   return (
     <SectionCard title="Partners" eyebrow="Directory and onboarding status">
-      {partners.length === 0 ? (
+      {totalCount === 0 ? (
         <div className="empty-state">No partners yet.</div>
       ) : (
+        <>
         <div className="table-wrap">
           <table>
             <thead>
@@ -52,6 +78,7 @@ export default async function AdminPartnersPage() {
                   createdAt: partner.createdAt.toISOString(),
                   stripeOnboardingComplete: partner.stripeOnboardingComplete,
                   stripeAccountId: partner.stripeAccountId,
+                  tierId: partner.tierId,
                   tierName: partner.tier?.name ?? null,
                   vendorReferralCode: partner.vendorReferralCode,
                   vendorReferralCodeActive: partner.vendorReferralCodeActive,
@@ -107,7 +134,7 @@ export default async function AdminPartnersPage() {
                             Review
                           </Link>
                         ) : null}
-                        <PartnerDetailsDialog partner={dialogData} />
+                        <PartnerDetailsDialog partner={dialogData} tiers={tiers} />
                       </div>
                     </td>
                   </tr>
@@ -116,6 +143,28 @@ export default async function AdminPartnersPage() {
             </tbody>
           </table>
         </div>
+
+        {pageCount > 1 ? (
+          <div className="table-pagination">
+            <nav className="pagination" aria-label="Partner pages">
+              {Array.from({ length: pageCount }, (_, index) => index + 1).map((pageNumber) => (
+                <Link
+                  key={pageNumber}
+                  className={
+                    pageNumber === page
+                      ? "pagination__link pagination__link--active"
+                      : "pagination__link"
+                  }
+                  href={pageHref(pageNumber)}
+                  aria-current={pageNumber === page ? "page" : undefined}
+                >
+                  {pageNumber}
+                </Link>
+              ))}
+            </nav>
+          </div>
+        ) : null}
+        </>
       )}
     </SectionCard>
   );

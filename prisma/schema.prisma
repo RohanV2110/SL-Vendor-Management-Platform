@@ -57,6 +57,12 @@ enum PartnerDealStatus {
   REJECTED
 }
 
+enum PartnerDealStage {
+  PROCESSING
+  WON
+  LOST
+}
+
 enum CommissionType {
   PERCENTAGE
   FIXED
@@ -480,6 +486,7 @@ model PartnerDeal {
   notes             String?
   dealValue         Decimal?          @db.Decimal(12, 2)
   status            PartnerDealStatus @default(PENDING_APPROVAL)
+  stage             PartnerDealStage  @default(PROCESSING)
   reviewedAt        DateTime?
   reviewedById      String?
   rejectionReason   String?
@@ -490,6 +497,7 @@ model PartnerDeal {
 
   @@index([partnerAccountId])
   @@index([status])
+  @@index([stage])
   @@index([email])
 }
 
