@@ -21,19 +21,21 @@ export function AdminNotificationList({ notifications }: AdminNotificationListPr
   }
 
   return (
-    <div className="stack-md">
+    <div className="admin-notification-list">
       {notifications.map((notification) => (
         <article className="notification-card notification-card--new" key={notification.id}>
-          <span className="notification-new-label">New</span>
-          <div className="inline-form" style={{ justifyContent: "space-between" }}>
-            <strong>{notification.title}</strong>
-            <span className="muted">{formatDateTime(notification.createdAt)}</span>
+          <div className="notification-card__header">
+            <span className="notification-new-label">New</span>
+            <time className="notification-card__time muted" dateTime={notification.createdAt}>
+              {formatDateTime(notification.createdAt)}
+            </time>
           </div>
-          <p className="muted">{notification.body}</p>
-          <form action={markAdminNotificationReadAction} style={{ marginTop: 8 }}>
+          <h3 className="notification-card__title">{notification.title}</h3>
+          <p className="notification-card__body muted">{notification.body}</p>
+          <form action={markAdminNotificationReadAction} className="notification-card__form">
             <input type="hidden" name="notificationId" value={notification.id} />
             <SubmitButton
-              className="button button-secondary"
+              className="button button-secondary notification-card__read-btn"
               label="Mark as read"
               pendingLabel="Saving..."
             />

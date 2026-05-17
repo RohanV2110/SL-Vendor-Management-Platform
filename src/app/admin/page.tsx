@@ -1,4 +1,4 @@
-import { PartnerApplicationStatus, ReferralStatus } from "@prisma/client";
+import { ReferralStatus } from "@prisma/client";
 import { AdminNotificationList } from "@/components/admin/admin-notification-list";
 import { prisma } from "@/lib/prisma";
 import { SectionCard } from "@/components/section-card";
@@ -8,20 +8,10 @@ import { requireRole } from "@/lib/auth-helpers";
 export default async function AdminOverviewPage() {
   const admin = await requireRole("ADMIN");
 
-  const [applications, pendingApplications, pendingReferrals, ledger, notifications] =
+  const [totalDeals, totalPartners, pendingReferrals, ledger, notifications] =
     await Promise.all([
-      prisma.partnerApplication.count(),
-      prisma.partnerApplication.count({
-        where: {
-          status: {
-            in: [
-              PartnerApplicationStatus.SUBMITTED,
-              PartnerApplicationStatus.UNDER_REVIEW,
-              PartnerApplicationStatus.SIGNED_DOCUMENTS_UPLOADED
-            ]
-          }
-        }
-      }),
+      prisma.partnerDeal.count(),
+      prisma.partnerAccount.count(),
       prisma.referral.count({
         where: { status: { in: [ReferralStatus.SUBMITTED, ReferralStatus.UNDER_REVIEW] } }
       }),
@@ -42,12 +32,12 @@ export default async function AdminOverviewPage() {
     <div className="stack-lg">
       <div className="stats-grid">
         <div className="stat">
-          <span className="muted">Applications</span>
-          <strong>{applications}</strong>
+          <span className="muted">Total deals</span>
+          <strong>{totalDeals}</strong>
         </div>
         <div className="stat">
-          <span className="muted">Pending reviews</span>
-          <strong>{pendingApplications}</strong>
+          <span className="muted">Partners</span>
+          <strong>{totalPartners}</strong>
         </div>
         <div className="stat">
           <span className="muted">Referrals awaiting action</span>
