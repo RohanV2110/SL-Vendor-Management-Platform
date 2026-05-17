@@ -14,7 +14,7 @@ concurrency:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: rohanv2110/sl-vendor-management-platform
-  DEPLOY_HOST: 34.46.98.30
+  DEPLOY_HOST: 34.122.29.156
   DEPLOY_USER: node
   DEPLOY_PATH: /home/node/docker-stack/SL-Vendor-Management-Platform
   PROD_URL: https://portal.sugarandleather.com
