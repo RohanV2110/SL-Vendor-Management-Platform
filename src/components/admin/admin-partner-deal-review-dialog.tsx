@@ -251,7 +251,10 @@ export function AdminPartnerDealReviewDialog({ deal }: AdminPartnerDealReviewDia
                       </option>
                     ))}
                   </select>
-                  <small className="muted">Stage is managed here, not from the table.</small>
+                  <small className="muted">
+                    Approve the deal first. Mark Won after setting deal value to auto-generate
+                    upfront and trailing commissions. Lost voids commissions.
+                  </small>
                 </label>
               </div>
 

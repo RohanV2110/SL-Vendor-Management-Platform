@@ -36,6 +36,8 @@ import {
   updateCommissionStatus,
   updatePartnerDeal,
   updatePartnerDealStage,
+  verifyTrailingCommission,
+  stopPartnerDealTrailingCommissions,
   upsertDeal,
   uploadPartnerDocument,
   verifyPartnerDocument,
@@ -316,8 +318,13 @@ export async function verifyDocumentAction(formData: FormData) {
 
 export async function activatePartnerAction(formData: FormData) {
   const admin = await requireRole("ADMIN");
+  const tierId = getRequiredString(formData, "tierId").trim();
+  if (!tierId) {
+    throw new Error("Select a tier before activating this partner.");
+  }
   await activatePartnerAccount({
     partnerAccountId: getRequiredString(formData, "partnerAccountId"),
+    tierId,
     adminUserId: admin.id
   });
   revalidatePath("/admin/applications");
@@ -811,11 +818,15 @@ export async function addInternalNoteAction(formData: FormData) {
 export async function approvePartnerAction(formData: FormData) {
   const admin = await requireRole("ADMIN");
   const partnerAccountId = getRequiredString(formData, "partnerAccountId").trim();
+  const tierId = getRequiredString(formData, "tierId").trim();
   if (!partnerAccountId) {
     throw new Error("Partner is required.");
   }
+  if (!tierId) {
+    throw new Error("Select a tier before activating this partner.");
+  }
 
-  await approvePartnerAccount({ partnerAccountId, adminUserId: admin.id });
+  await approvePartnerAccount({ partnerAccountId, tierId, adminUserId: admin.id });
 
   revalidatePath("/admin/partners");
   revalidatePath(`/admin/partners/${partnerAccountId}`);
@@ -1071,8 +1082,36 @@ export async function updatePartnerDealStageAction(formData: FormData) {
   });
 
   revalidatePath("/admin/deals");
+  revalidatePath("/admin/commissions");
   revalidatePath("/partner/affiliates");
   revalidatePath("/partner/dashboard");
+}
+
+export async function verifyTrailingCommissionAction(formData: FormData) {
+  const admin = await requireRole("ADMIN");
+  const entryId = getRequiredString(formData, "entryId").trim();
+  const verified = getRequiredString(formData, "verified") === "true";
+
+  await verifyTrailingCommission({
+    entryId,
+    verified,
+    adminUserId: admin.id
+  });
+
+  revalidatePath("/admin/commissions");
+}
+
+export async function stopPartnerDealTrailingAction(formData: FormData) {
+  const admin = await requireRole("ADMIN");
+  const partnerDealId = getRequiredString(formData, "partnerDealId").trim();
+
+  await stopPartnerDealTrailingCommissions({
+    partnerDealId,
+    adminUserId: admin.id
+  });
+
+  revalidatePath("/admin/commissions");
+  revalidatePath("/admin/deals");
 }
 
 export async function updatePartnerTierAction(formData: FormData) {

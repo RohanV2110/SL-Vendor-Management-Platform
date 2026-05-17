@@ -53,6 +53,12 @@ export default async function AdminPartnerDetailPage({ params }: { params: Promi
     notFound();
   }
 
+  const tiers = await prisma.tier.findMany({
+    where: { isActive: true },
+    orderBy: { name: "asc" },
+    select: { id: true, name: true }
+  });
+
   const ndaSigned = Boolean(partner.ndaSignedAt);
   const agreementSigned = Boolean(partner.agreementSignedAt);
   const canActivate = ndaSigned && agreementSigned && partner.status !== "ACTIVE";
@@ -64,8 +70,22 @@ export default async function AdminPartnerDetailPage({ params }: { params: Promi
           Back to Partners
         </Link>
         {partner.status !== "ACTIVE" ? (
-          <form action={approvePartnerAction}>
+          <form action={approvePartnerAction} className="inline-form" style={{ flexWrap: "wrap" }}>
             <input type="hidden" name="partnerAccountId" value={partner.id} />
+            <select
+              className="select"
+              name="tierId"
+              defaultValue={partner.tierId}
+              required
+              disabled={!canActivate}
+              aria-label="Commission tier"
+            >
+              {tiers.map((tier) => (
+                <option key={tier.id} value={tier.id}>
+                  {tier.name}
+                </option>
+              ))}
+            </select>
             <SubmitButton
               label="Activate partner"
               pendingLabel="Activating..."

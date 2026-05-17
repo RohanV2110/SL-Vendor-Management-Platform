@@ -13,7 +13,13 @@ import { StatusBadge } from "@/components/status-badge";
 import { SubmitButton } from "@/components/submit-button";
 import { formatDateTime } from "@/lib/utils";
 
+type ApplicationTier = {
+  id: string;
+  name: string;
+};
+
 type ApplicationDetailsDialogProps = {
+  tiers: ApplicationTier[];
   application: {
     id: string;
     fullName: string;
@@ -52,7 +58,7 @@ type ApplicationDetailsDialogProps = {
   };
 };
 
-export function ApplicationDetailsDialog({ application }: ApplicationDetailsDialogProps) {
+export function ApplicationDetailsDialog({ application, tiers }: ApplicationDetailsDialogProps) {
   const [open, setOpen] = useState(false);
   const partnerAccount = application.partnerAccount;
   const allVerified =
@@ -181,8 +187,19 @@ export function ApplicationDetailsDialog({ application }: ApplicationDetailsDial
                         </div>
                       ))}
                       {allVerified ? (
-                        <form action={activatePartnerAction}>
+                        <form action={activatePartnerAction} className="stack-md">
                           <input type="hidden" name="partnerAccountId" value={partnerAccount.id} />
+                          <label className="field">
+                            <span>Commission tier (required)</span>
+                            <select className="select" name="tierId" required>
+                              <option value="">Select tier…</option>
+                              {tiers.map((tier) => (
+                                <option key={tier.id} value={tier.id}>
+                                  {tier.name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
                           <SubmitButton label="Activate partner" pendingLabel="Activating..." />
                         </form>
                       ) : null}

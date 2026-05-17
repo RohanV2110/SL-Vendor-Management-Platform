@@ -630,9 +630,17 @@ export async function markPartnerDocumentSigned(input: {
 
 export async function approvePartnerAccount(input: {
   partnerAccountId: string;
+  tierId: string;
   adminUserId: string;
 }) {
   return prisma.$transaction(async (tx) => {
+    const tier = await tx.tier.findFirst({
+      where: { id: input.tierId, isActive: true }
+    });
+    if (!tier) {
+      throw new Error("Select a valid tier before activating this partner.");
+    }
+
     const partner = await tx.partnerAccount.findUnique({
       where: { id: input.partnerAccountId },
       include: { application: true }
@@ -654,15 +662,30 @@ export async function approvePartnerAccount(input: {
     }
 
     const previousStatus = partner.status;
+    const previousTierId = partner.tierId;
     const now = new Date();
 
     const updated = await tx.partnerAccount.update({
       where: { id: partner.id },
       data: {
+        tierId: input.tierId,
         status: PartnerAccountStatus.ACTIVE,
         activatedAt: partner.activatedAt ?? now,
         activationNoticeSeenAt: null
       }
+    });
+
+    await tx.agreement.updateMany({
+      where: {
+        partnerAccountId: partner.id,
+        status: { in: [AgreementStatus.DRAFT, AgreementStatus.ACTIVE] }
+      },
+      data: { tierId: input.tierId }
+    });
+
+    await tx.partnerApplication.update({
+      where: { id: partner.applicationId },
+      data: { assignedTierId: input.tierId }
     });
 
     await tx.partnerApplication.update({
@@ -675,14 +698,37 @@ export async function approvePartnerAccount(input: {
       }
     });
 
+    const activeAgreement = await tx.agreement.findFirst({
+      where: {
+        partnerAccountId: partner.id,
+        status: { in: [AgreementStatus.DRAFT, AgreementStatus.ACTIVE] }
+      },
+      orderBy: [{ effectiveStartDate: "desc" }, { version: "desc" }]
+    });
+
+    if (activeAgreement) {
+      await tx.agreement.update({
+        where: { id: activeAgreement.id },
+        data: { status: AgreementStatus.ACTIVE }
+      });
+    }
+
+    await createPartnerNotification(
+      tx,
+      partner.id,
+      "Account activated",
+      "Your partner account is active. You can submit deals and referrals.",
+      "/partner/dashboard"
+    );
+
     await createAuditLog(tx, {
       actorUserId: input.adminUserId,
       entityType: "PartnerAccount",
       entityId: partner.id,
       action: "partner.approved",
-      summary: `${partner.primaryContactName} (${partner.company}) approved by admin.`,
-      previousState: { status: previousStatus },
-      nextState: { status: PartnerAccountStatus.ACTIVE }
+      summary: `${partner.primaryContactName} (${partner.company}) activated on tier ${tier.name}.`,
+      previousState: { status: previousStatus, tierId: previousTierId },
+      nextState: { status: PartnerAccountStatus.ACTIVE, tierId: input.tierId, tierName: tier.name }
     });
 
     return updated;
@@ -824,7 +870,34 @@ export type PartnerDealInput = {
   dealValue?: number | null;
 };
 
-async function syncPartnerDealCommission(
+async function voidPartnerDealCommissions(tx: Prisma.TransactionClient, partnerDealId: string) {
+  await tx.commissionLedgerEntry.updateMany({
+    where: {
+      partnerDealId,
+      status: { not: CommissionLedgerStatus.PAID }
+    },
+    data: { status: CommissionLedgerStatus.VOID }
+  });
+}
+
+async function resolvePartnerDealAgreement(tx: Prisma.TransactionClient, partnerAccountId: string) {
+  return tx.agreement.findFirst({
+    where: {
+      partnerAccountId,
+      status: { in: [AgreementStatus.ACTIVE, AgreementStatus.DRAFT] }
+    },
+    orderBy: [{ effectiveStartDate: "desc" }, { version: "desc" }]
+  });
+}
+
+async function resolvePartnerDealTierRule(tx: Prisma.TransactionClient, tierId: string) {
+  return tx.tierRule.findFirst({
+    where: { tierId, isActive: true, productId: null },
+    orderBy: { updatedAt: "desc" }
+  });
+}
+
+async function syncPartnerDealCommissionsFromStage(
   tx: Prisma.TransactionClient,
   partnerDealId: string,
   adminUserId: string
@@ -847,83 +920,104 @@ async function syncPartnerDealCommission(
     return;
   }
 
-  const existing = await tx.commissionLedgerEntry.findFirst({
-    where: { partnerDealId: deal.id, type: CommissionEntryType.UPFRONT }
-  });
+  if (deal.stage === PartnerDealStage.LOST) {
+    await voidPartnerDealCommissions(tx, partnerDealId);
+    return;
+  }
+
+  if (deal.stage === PartnerDealStage.PROCESSING) {
+    await voidPartnerDealCommissions(tx, partnerDealId);
+    return;
+  }
+
+  if (deal.stage !== PartnerDealStage.WON) {
+    return;
+  }
 
   if (deal.status !== PartnerDealStatus.APPROVED) {
-    if (existing) {
-      await tx.commissionLedgerEntry.update({
-        where: { id: existing.id },
-        data: { status: CommissionLedgerStatus.VOID }
-      });
-    }
-    return;
+    throw new Error("Approve the deal before marking it Won.");
   }
 
-  const tierRule = await tx.tierRule.findFirst({
-    where: { tierId: deal.partnerAccount.tierId, isActive: true, productId: null },
-    orderBy: { updatedAt: "desc" }
-  });
+  if (!deal.dealValue || Number(deal.dealValue) <= 0) {
+    throw new Error("Set a deal value before marking the deal Won.");
+  }
 
+  const tierRule = await resolvePartnerDealTierRule(tx, deal.partnerAccount.tierId);
   if (!tierRule) {
-    return;
+    throw new Error("No active tier rule found for this partner.");
   }
 
-  const agreement = await tx.agreement.findFirst({
-    where: {
-      partnerAccountId: deal.partnerAccount.id,
-      status: { in: [AgreementStatus.ACTIVE, AgreementStatus.DRAFT] }
-    },
-    orderBy: [{ effectiveStartDate: "desc" }, { version: "desc" }]
-  });
-
+  const agreement = await resolvePartnerDealAgreement(tx, deal.partnerAccount.id);
   if (!agreement) {
-    return;
+    throw new Error("No active agreement found for this partner.");
   }
 
-  const dealValue = deal.dealValue ? Number(deal.dealValue) : 0;
-  const ruleType = tierRule.upfrontCommissionType;
-  const ruleValue = Number(tierRule.upfrontCommissionValue);
-  const amount = calculateCommissionAmount(dealValue, ruleType, ruleValue);
+  await voidPartnerDealCommissions(tx, partnerDealId);
+
+  const dealValue = Number(deal.dealValue);
   const partnerLabel = deal.partnerAccount.company || deal.partnerAccount.primaryContactName;
-  const description = `Upfront commission for ${deal.name} (${deal.companyName}) — ${partnerLabel}`;
 
-  if (existing) {
-    await tx.commissionLedgerEntry.update({
-      where: { id: existing.id },
-      data: {
-        status: CommissionLedgerStatus.PENDING_APPROVAL,
-        amount,
-        description,
-        agreementId: agreement.id,
-        percentageApplied: ruleType === CommissionType.PERCENTAGE ? ruleValue : null
-      }
-    });
-    return;
-  }
+  const upfrontType = agreement.upfrontCommissionType ?? tierRule.upfrontCommissionType;
+  const upfrontValue = agreement.upfrontCommissionValue ?? tierRule.upfrontCommissionValue;
+  const trailingType = agreement.trailingCommissionType ?? tierRule.trailingCommissionType;
+  const trailingValue = agreement.trailingCommissionValue ?? tierRule.trailingCommissionValue;
+  const trailingDuration = agreement.trailingDurationMonths ?? tierRule.trailingDurationMonths ?? 0;
+  const trailingCadence = agreement.trailingCadenceMonths ?? tierRule.trailingCadenceMonths ?? 0;
 
-  const created = await tx.commissionLedgerEntry.create({
+  const upfrontAmount = calculateCommissionAmount(dealValue, upfrontType, Number(upfrontValue));
+  const upfrontEntry = await tx.commissionLedgerEntry.create({
     data: {
       partnerAccountId: deal.partnerAccount.id,
       partnerDealId: deal.id,
       agreementId: agreement.id,
       type: CommissionEntryType.UPFRONT,
       status: CommissionLedgerStatus.PENDING_APPROVAL,
-      amount,
-      description,
-      percentageApplied: ruleType === CommissionType.PERCENTAGE ? ruleValue : null
+      amount: upfrontAmount,
+      description: `Upfront commission for ${deal.name} (${deal.companyName}) — ${partnerLabel}`,
+      percentageApplied: upfrontType === CommissionType.PERCENTAGE ? upfrontValue : null,
+      payableAt: new Date()
     }
   });
 
   await createAuditLog(tx, {
     actorUserId: adminUserId,
     entityType: "CommissionLedgerEntry",
-    entityId: created.id,
+    entityId: upfrontEntry.id,
     action: "commission.auto_from_deal",
-    summary: `Auto-created commission for approved deal ${deal.name}.`,
-    nextState: { amount: created.amount.toString() }
+    summary: `Upfront commission created for won deal ${deal.name}.`,
+    nextState: { amount: upfrontEntry.amount.toString(), type: CommissionEntryType.UPFRONT }
   });
+
+  if (
+    !deal.trailingStoppedAt &&
+    trailingType &&
+    trailingValue &&
+    trailingDuration > 0 &&
+    trailingCadence > 0
+  ) {
+    const periods = Math.floor(trailingDuration / trailingCadence);
+    const wonAt = new Date();
+
+    for (let index = 0; index < periods; index += 1) {
+      const scheduledFor = new Date(wonAt);
+      scheduledFor.setMonth(scheduledFor.getMonth() + trailingCadence * (index + 1));
+
+      const amount = calculateCommissionAmount(dealValue, trailingType, Number(trailingValue));
+      await tx.commissionLedgerEntry.create({
+        data: {
+          partnerAccountId: deal.partnerAccount.id,
+          partnerDealId: deal.id,
+          agreementId: agreement.id,
+          type: CommissionEntryType.TRAILING,
+          status: CommissionLedgerStatus.SCHEDULED,
+          amount,
+          description: `Trailing commission ${index + 1}/${periods} for ${deal.name} (${deal.companyName})`,
+          percentageApplied: trailingType === CommissionType.PERCENTAGE ? trailingValue : null,
+          scheduledFor
+        }
+      });
+    }
+  }
 }
 
 export async function createPartnerDeal(input: PartnerDealInput & { partnerAccountId: string }) {
@@ -1018,8 +1112,8 @@ export async function updatePartnerDeal(input: {
       data: updateData
     });
 
-    if (updated.status === PartnerDealStatus.APPROVED) {
-      await syncPartnerDealCommission(tx, updated.id, input.actorUserId);
+    if (updated.stage === PartnerDealStage.WON) {
+      await syncPartnerDealCommissionsFromStage(tx, updated.id, input.actorUserId);
     }
 
     return updated;
@@ -1056,8 +1150,6 @@ export async function reviewPartnerDeal(input: {
       }
     });
 
-    await syncPartnerDealCommission(tx, updated.id, input.adminUserId);
-
     return updated;
   });
 }
@@ -1070,7 +1162,13 @@ export async function updatePartnerDealStage(input: {
   return prisma.$transaction(async (tx) => {
     const existing = await tx.partnerDeal.findUnique({
       where: { id: input.dealId },
-      select: { id: true, name: true, companyName: true, stage: true }
+      select: {
+        id: true,
+        name: true,
+        companyName: true,
+        stage: true,
+        status: true
+      }
     });
 
     if (!existing) {
@@ -1081,10 +1179,23 @@ export async function updatePartnerDealStage(input: {
       return existing;
     }
 
+    const stageData: Prisma.PartnerDealUpdateInput = { stage: input.stage };
+
+    if (input.stage === PartnerDealStage.LOST) {
+      stageData.status = PartnerDealStatus.REJECTED;
+      stageData.rejectionReason = "Deal marked as lost.";
+    }
+
+    if (input.stage === PartnerDealStage.WON) {
+      stageData.rejectionReason = null;
+    }
+
     const updated = await tx.partnerDeal.update({
       where: { id: input.dealId },
-      data: { stage: input.stage }
+      data: stageData
     });
+
+    await syncPartnerDealCommissionsFromStage(tx, updated.id, input.adminUserId);
 
     await createAuditLog(tx, {
       actorUserId: input.adminUserId,
@@ -1092,11 +1203,95 @@ export async function updatePartnerDealStage(input: {
       entityId: updated.id,
       action: "partner_deal.stage_updated",
       summary: `Deal stage set to ${input.stage} for ${existing.name} (${existing.companyName}).`,
-      previousState: { stage: existing.stage },
-      nextState: { stage: input.stage }
+      previousState: { stage: existing.stage, status: existing.status },
+      nextState: { stage: input.stage, status: updated.status }
     });
 
     return updated;
+  });
+}
+
+export async function verifyTrailingCommission(input: {
+  entryId: string;
+  adminUserId: string;
+  verified: boolean;
+}) {
+  return prisma.$transaction(async (tx) => {
+    const entry = await tx.commissionLedgerEntry.findUnique({
+      where: { id: input.entryId },
+      select: { id: true, type: true, partnerDealId: true }
+    });
+
+    if (!entry || entry.type !== CommissionEntryType.TRAILING) {
+      throw new Error("Only trailing commission entries can be verified.");
+    }
+
+    const updated = await tx.commissionLedgerEntry.update({
+      where: { id: entry.id },
+      data: input.verified
+        ? {
+            trailingVerifiedAt: new Date(),
+            trailingVerifiedById: input.adminUserId
+          }
+        : {
+            trailingVerifiedAt: null,
+            trailingVerifiedById: null
+          }
+    });
+
+    await createAuditLog(tx, {
+      actorUserId: input.adminUserId,
+      entityType: "CommissionLedgerEntry",
+      entityId: entry.id,
+      action: input.verified ? "commission.trailing_verified" : "commission.trailing_unverified",
+      summary: input.verified
+        ? "Trailing commission marked as verified."
+        : "Trailing commission verification cleared.",
+      nextState: { trailingVerifiedAt: updated.trailingVerifiedAt }
+    });
+
+    return updated;
+  });
+}
+
+export async function stopPartnerDealTrailingCommissions(input: {
+  partnerDealId: string;
+  adminUserId: string;
+}) {
+  return prisma.$transaction(async (tx) => {
+    const deal = await tx.partnerDeal.findUnique({
+      where: { id: input.partnerDealId },
+      select: { id: true, name: true, trailingStoppedAt: true }
+    });
+
+    if (!deal) {
+      throw new Error("Deal not found.");
+    }
+
+    const now = new Date();
+
+    await tx.partnerDeal.update({
+      where: { id: deal.id },
+      data: { trailingStoppedAt: now }
+    });
+
+    await tx.commissionLedgerEntry.updateMany({
+      where: {
+        partnerDealId: deal.id,
+        type: CommissionEntryType.TRAILING,
+        status: CommissionLedgerStatus.SCHEDULED
+      },
+      data: { status: CommissionLedgerStatus.VOID }
+    });
+
+    await createAuditLog(tx, {
+      actorUserId: input.adminUserId,
+      entityType: "PartnerDeal",
+      entityId: deal.id,
+      action: "partner_deal.trailing_stopped",
+      summary: `Trailing commissions stopped for deal ${deal.name}.`,
+      nextState: { trailingStoppedAt: now }
+    });
   });
 }
 
@@ -1685,77 +1880,41 @@ export async function verifyPartnerDocument(input: {
   });
 }
 
-export async function activatePartnerAccount(input: { partnerAccountId: string; adminUserId: string }) {
-  return prisma.$transaction(async (tx) => {
-    const partner = await tx.partnerAccount.findUnique({
-      where: { id: input.partnerAccountId },
-      include: {
-        documents: true,
-        user: true,
-        agreements: {
-          where: { status: { in: [AgreementStatus.DRAFT, AgreementStatus.ACTIVE] } },
-          orderBy: { createdAt: "desc" }
-        }
-      }
-    });
+export async function activatePartnerAccount(input: {
+  partnerAccountId: string;
+  tierId: string;
+  adminUserId: string;
+}) {
+  const partner = await prisma.partnerAccount.findUnique({
+    where: { id: input.partnerAccountId },
+    include: { documents: true, user: true }
+  });
 
-    if (!partner) {
-      throw new Error("Partner not found.");
-    }
+  if (!partner) {
+    throw new Error("Partner not found.");
+  }
 
-    if (!partner.user) {
-      throw new Error("Partner must set a password before activation.");
-    }
+  if (!partner.user) {
+    throw new Error("Partner must set a password before activation.");
+  }
 
-    const allVerified = partner.documents.length >= 2 && partner.documents.every((document) => document.status === AgreementDocumentStatus.VERIFIED);
-    if (!allVerified) {
-      throw new Error("Both signed documents must be verified before activation.");
-    }
+  const allVerified =
+    partner.documents.length >= 2 &&
+    partner.documents.every((document) => document.status === AgreementDocumentStatus.VERIFIED);
+  if (!allVerified) {
+    throw new Error("Both signed documents must be verified before activation.");
+  }
 
-    await tx.partnerAccount.update({
-      where: { id: partner.id },
-      data: {
-        status: PartnerAccountStatus.ACTIVE,
-        activatedAt: new Date()
-      }
-    });
+  await approvePartnerAccount({
+    partnerAccountId: input.partnerAccountId,
+    tierId: input.tierId,
+    adminUserId: input.adminUserId
+  });
 
-    await tx.partnerApplication.update({
-      where: { id: partner.applicationId },
-      data: {
-        status: PartnerApplicationStatus.ACTIVE,
-        activatedAt: new Date()
-      }
-    });
-
-    if (partner.agreements[0]) {
-      await tx.agreement.update({
-        where: { id: partner.agreements[0].id },
-        data: { status: AgreementStatus.ACTIVE }
-      });
-    }
-
-    await createAuditLog(tx, {
-      actorUserId: input.adminUserId,
-      entityType: "PartnerAccount",
-      entityId: partner.id,
-      action: "partner.activated",
-      summary: `${partner.company} activated`
-    });
-
-    await createPartnerNotification(
-      tx,
-      partner.id,
-      "Account activated",
-      "Your partner account is active and you can submit referrals.",
-      "/partner/dashboard"
-    );
-
-    await sendTransactionalEmail({
-      to: partner.primaryContactEmail,
-      subject: "Your Sugar & Leather AI partner account is active",
-      html: "<p>Your partner account is now active.</p>"
-    });
+  await sendTransactionalEmail({
+    to: partner.primaryContactEmail,
+    subject: "Your Sugar & Leather AI partner account is active",
+    html: "<p>Your partner account is now active.</p>"
   });
 }
 

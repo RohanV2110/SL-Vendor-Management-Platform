@@ -139,6 +139,7 @@ model User {
   reviewedApplications PartnerApplication[] @relation("ApplicationReviewer")
   reviewedReferrals Referral[]      @relation("ReferralReviewer")
   verifiedDocuments AgreementDocument[] @relation("DocumentVerifier")
+  verifiedCommissionEntries CommissionLedgerEntry[] @relation("CommissionVerifier")
   internalNotes     InternalNote[]
   auditLogs         AuditLog[]
   notifications     Notification[]
@@ -487,6 +488,7 @@ model PartnerDeal {
   dealValue         Decimal?          @db.Decimal(12, 2)
   status            PartnerDealStatus @default(PENDING_APPROVAL)
   stage             PartnerDealStage  @default(PROCESSING)
+  trailingStoppedAt DateTime?
   reviewedAt        DateTime?
   reviewedById      String?
   rejectionReason   String?
@@ -518,6 +520,8 @@ model CommissionLedgerEntry {
   scheduledFor        DateTime?
   payableAt           DateTime?
   paidAt              DateTime?
+  trailingVerifiedAt  DateTime?
+  trailingVerifiedById String?
   stripePayoutId      String?
   description         String
   createdAt           DateTime               @default(now())
@@ -530,8 +534,10 @@ model CommissionLedgerEntry {
   payoutBatch         PayoutBatch?           @relation(fields: [payoutBatchId], references: [id], onDelete: SetNull)
   parentEntry         CommissionLedgerEntry? @relation("ClawbackParent", fields: [parentEntryId], references: [id], onDelete: SetNull)
   clawbackEntries     CommissionLedgerEntry[] @relation("ClawbackParent")
+  trailingVerifiedBy  User?                  @relation("CommissionVerifier", fields: [trailingVerifiedById], references: [id], onDelete: SetNull)
 
   @@index([partnerAccountId, status])
+  @@index([partnerDealId, type])
 }
 
 model QuarterlyActivitySnapshot {
