@@ -100,6 +100,8 @@ jobs:
       - name: Deploy to server
         env:
           IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+          GHCR_USER: ${{ github.repository_owner }}
+          GHCR_TOKEN: ${{ secrets.GHCR_PULL_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           ssh -o BatchMode=yes -o ConnectTimeout=15 "$DEPLOY_USER@$DEPLOY_HOST" bash -s <<EOF
             set -euo pipefail
@@ -107,6 +109,8 @@ jobs:
             echo "[deploy] Updating checkout"
             git fetch --quiet origin main
             git pull --ff-only origin main
+            echo "[deploy] Logging in to ghcr.io"
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
             echo "[deploy] Pulling image: $IMAGE"
             docker pull "$IMAGE"
             echo "[deploy] Restarting vms-app"
