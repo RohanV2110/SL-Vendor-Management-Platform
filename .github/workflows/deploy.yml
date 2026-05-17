@@ -44,7 +44,9 @@ jobs:
 
   deploy:
     needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -88,11 +90,18 @@ jobs:
           mkdir -p ~/.ssh
           ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
 
+      - name: Verify SSH access
+        run: |
+          if ! ssh -o BatchMode=yes -o ConnectTimeout=15 "$DEPLOY_USER@$DEPLOY_HOST" "echo deploy-ssh-ok"; then
+            echo "::error::SSH to $DEPLOY_USER@$DEPLOY_HOST failed. Add the public key for DEPLOY_SSH_KEY to authorized_keys on that server (not on your laptop). Run scripts/verify-deploy-ssh.sh locally after fixing."
+            exit 1
+          fi
+
       - name: Deploy to server
         env:
           IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
         run: |
-          ssh "$DEPLOY_USER@$DEPLOY_HOST" bash -s <<EOF
+          ssh -o BatchMode=yes -o ConnectTimeout=15 "$DEPLOY_USER@$DEPLOY_HOST" bash -s <<EOF
             set -euo pipefail
             cd "$DEPLOY_PATH"
             echo "[deploy] Updating checkout"
