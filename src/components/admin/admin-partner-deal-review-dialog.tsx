@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { PartnerDealStage, PartnerDealStatus } from "@prisma/client";
 import { Trash2, X } from "lucide-react";
@@ -80,13 +80,18 @@ export function AdminPartnerDealReviewDialog({ deal }: AdminPartnerDealReviewDia
     dealValue: deal.dealValue
   };
 
-  useEffect(() => {
-    if (!open) return;
+  function resetDealFormState() {
     setStage(deal.stage ?? DEFAULT_STAGE);
     setCountry(deal.country);
     setDialCode(deal.phoneCountryCode ?? "");
     setFormState(initialState);
-  }, [open, deal.id, deal.stage, deal.country, deal.phoneCountryCode, deal.updatedAt]);
+    setConfirmDeleteOpen(false);
+  }
+
+  function openDialog() {
+    resetDealFormState();
+    setOpen(true);
+  }
 
   function close() {
     setOpen(false);
@@ -159,7 +164,7 @@ export function AdminPartnerDealReviewDialog({ deal }: AdminPartnerDealReviewDia
       <button
         className="button button-secondary deal-review-trigger"
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={openDialog}
       >
         Review
       </button>
