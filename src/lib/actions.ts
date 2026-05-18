@@ -988,6 +988,14 @@ export async function updatePartnerDealAction(
     return { status: "error", fieldErrors };
   }
 
+  let stage: "PROCESSING" | "WON" | "LOST" | undefined;
+  if (role === "ADMIN") {
+    const stageRaw = (getOptionalString(formData, "stage") ?? "").trim();
+    if (stageRaw === "PROCESSING" || stageRaw === "WON" || stageRaw === "LOST") {
+      stage = stageRaw;
+    }
+  }
+
   try {
     if (role === "ADMIN") {
       const admin = await requireRole("ADMIN");
@@ -995,7 +1003,8 @@ export async function updatePartnerDealAction(
         dealId,
         actorUserId: admin.id,
         actorRole: "ADMIN",
-        data
+        data,
+        stage
       });
     } else {
       const user = await requireRole("PARTNER");
@@ -1016,6 +1025,7 @@ export async function updatePartnerDealAction(
   revalidatePath("/partner/affiliates");
   revalidatePath("/partner/dashboard");
   revalidatePath("/admin/deals");
+  revalidatePath("/admin/commissions");
   return { status: "success" };
 }
 

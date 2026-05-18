@@ -426,8 +426,15 @@ h3 {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  margin-left: auto;
   padding: 10px 16px;
   font-size: 0.85rem;
+}
+
+.form-message--success {
+  color: var(--success, #1a6b3c);
+  background: rgba(26, 107, 60, 0.08);
+  border: 1px solid rgba(26, 107, 60, 0.2);
 }
 
 .deal-delete-confirm-panel {

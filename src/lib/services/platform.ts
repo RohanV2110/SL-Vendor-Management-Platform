@@ -1068,16 +1068,32 @@ export async function createPartnerDeal(input: PartnerDealInput & { partnerAccou
   });
 }
 
+function partnerDealStageUpdateData(stage: PartnerDealStage): Prisma.PartnerDealUpdateInput {
+  const stageData: Prisma.PartnerDealUpdateInput = { stage };
+
+  if (stage === PartnerDealStage.LOST) {
+    stageData.status = PartnerDealStatus.REJECTED;
+    stageData.rejectionReason = "Deal marked as lost.";
+  }
+
+  if (stage === PartnerDealStage.WON) {
+    stageData.rejectionReason = null;
+  }
+
+  return stageData;
+}
+
 export async function updatePartnerDeal(input: {
   dealId: string;
   actorUserId: string;
   actorRole: "PARTNER" | "ADMIN";
   partnerAccountId?: string;
   data: PartnerDealInput;
+  stage?: PartnerDealStage;
 }) {
   const deal = await prisma.partnerDeal.findUnique({
     where: { id: input.dealId },
-    select: { id: true, partnerAccountId: true, status: true }
+    select: { id: true, partnerAccountId: true, status: true, stage: true, name: true, companyName: true }
   });
 
   if (!deal) {
@@ -1107,12 +1123,32 @@ export async function updatePartnerDeal(input: {
       updateData.dealValue = input.data.dealValue ?? null;
     }
 
-    const updated = await tx.partnerDeal.update({
+    let updated = await tx.partnerDeal.update({
       where: { id: deal.id },
       data: updateData
     });
 
-    if (updated.stage === PartnerDealStage.WON) {
+    const stageToApply =
+      input.actorRole === "ADMIN" && input.stage !== undefined ? input.stage : undefined;
+
+    if (stageToApply !== undefined && stageToApply !== deal.stage) {
+      updated = await tx.partnerDeal.update({
+        where: { id: deal.id },
+        data: partnerDealStageUpdateData(stageToApply)
+      });
+
+      await syncPartnerDealCommissionsFromStage(tx, updated.id, input.actorUserId);
+
+      await createAuditLog(tx, {
+        actorUserId: input.actorUserId,
+        entityType: "PartnerDeal",
+        entityId: updated.id,
+        action: "partner_deal.stage_updated",
+        summary: `Deal stage set to ${stageToApply} for ${deal.name} (${deal.companyName}).`,
+        previousState: { stage: deal.stage, status: deal.status },
+        nextState: { stage: stageToApply, status: updated.status }
+      });
+    } else if (updated.stage === PartnerDealStage.WON) {
       await syncPartnerDealCommissionsFromStage(tx, updated.id, input.actorUserId);
     }
 
@@ -1179,20 +1215,9 @@ export async function updatePartnerDealStage(input: {
       return existing;
     }
 
-    const stageData: Prisma.PartnerDealUpdateInput = { stage: input.stage };
-
-    if (input.stage === PartnerDealStage.LOST) {
-      stageData.status = PartnerDealStatus.REJECTED;
-      stageData.rejectionReason = "Deal marked as lost.";
-    }
-
-    if (input.stage === PartnerDealStage.WON) {
-      stageData.rejectionReason = null;
-    }
-
     const updated = await tx.partnerDeal.update({
       where: { id: input.dealId },
-      data: stageData
+      data: partnerDealStageUpdateData(input.stage)
     });
 
     await syncPartnerDealCommissionsFromStage(tx, updated.id, input.adminUserId);

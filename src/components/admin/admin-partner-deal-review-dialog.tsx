@@ -8,7 +8,6 @@ import {
   deletePartnerDealAction,
   reviewPartnerDealAction,
   updatePartnerDealAction,
-  updatePartnerDealStageAction,
   type PartnerDealFormState
 } from "@/lib/actions";
 import { PartnerDealFormFields, type PartnerDealEditable } from "@/components/partner-deal-form-fields";
@@ -56,9 +55,14 @@ function statusClass(status: PartnerDealStatus) {
   return `deal-status deal-status--${status.toLowerCase()}`;
 }
 
-export function AdminPartnerDealReviewDialog({ deal }: AdminPartnerDealReviewDialogProps) {
+function AdminPartnerDealReviewPanel({
+  deal,
+  onClose
+}: {
+  deal: AdminPartnerDealReviewRow;
+  onClose: () => void;
+}) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
   const [stage, setStage] = useState<PartnerDealStage>(deal.stage ?? DEFAULT_STAGE);
   const [country, setCountry] = useState(deal.country);
   const [dialCode, setDialCode] = useState(deal.phoneCountryCode ?? "");
@@ -80,23 +84,10 @@ export function AdminPartnerDealReviewDialog({ deal }: AdminPartnerDealReviewDia
     dealValue: deal.dealValue
   };
 
-  function resetDealFormState() {
-    setStage(deal.stage ?? DEFAULT_STAGE);
-    setCountry(deal.country);
-    setDialCode(deal.phoneCountryCode ?? "");
-    setFormState(initialState);
-    setConfirmDeleteOpen(false);
-  }
-
-  function openDialog() {
-    resetDealFormState();
-    setOpen(true);
-  }
-
   function close() {
-    setOpen(false);
     setConfirmDeleteOpen(false);
     setFormState(initialState);
+    onClose();
   }
 
   function getFieldError(field: keyof NonNullable<PartnerDealFormState["fieldErrors"]>) {
@@ -104,29 +95,13 @@ export function AdminPartnerDealReviewDialog({ deal }: AdminPartnerDealReviewDia
   }
 
   function handleSave(formData: FormData) {
+    formData.set("stage", stage);
     startTransition(async () => {
       const result = await updatePartnerDealAction(formState, formData);
       setFormState(result);
       if (result.status === "success") {
         router.refresh();
       }
-    });
-  }
-
-  function handleStageChange(next: PartnerDealStage) {
-    setStage(next);
-    const fd = new FormData();
-    fd.set("dealId", deal.id);
-    fd.set("stage", next);
-    startTransition(() => {
-      void (async () => {
-        try {
-          await updatePartnerDealStageAction(fd);
-          router.refresh();
-        } catch {
-          setStage(deal.stage ?? DEFAULT_STAGE);
-        }
-      })();
     });
   }
 
@@ -161,206 +136,225 @@ export function AdminPartnerDealReviewDialog({ deal }: AdminPartnerDealReviewDia
 
   return (
     <>
+      <div
+        className="dialog-backdrop"
+        role="presentation"
+            onMouseDown={() => {
+              if (confirmDeleteOpen) {
+                setConfirmDeleteOpen(false);
+                return;
+              }
+              close();
+            }}
+          >
+            <div
+              className="dialog-panel add-affiliate-panel deal-review-dialog-panel"
+              role="dialog"
+              aria-modal="true"
+              aria-label={`Review deal: ${deal.name}`}
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <div className="dialog-header dialog-header--deal-review">
+                <div className="dialog-header__copy">
+                  <p className="eyebrow">Review deal</p>
+                  <div className="deal-review-header-title-row">
+                    <h2>{deal.name}</h2>
+                    {isPendingApproval ? (
+                      <div className="deal-review-header-actions">
+                        <button
+                          className="button deal-review-header-actions__approve"
+                          type="button"
+                          disabled={isPending}
+                          onClick={() => handleReviewDecision("APPROVED")}
+                        >
+                          Approve
+                        </button>
+                        <button
+                          className="button button-secondary deal-review-header-actions__reject"
+                          type="button"
+                          disabled={isPending}
+                          onClick={() => handleReviewDecision("REJECTED")}
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                  <p className="muted">{deal.companyName}</p>
+                </div>
+                <button className="icon-button" type="button" aria-label="Close" onClick={close}>
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="dialog-content stack-lg deal-review-dialog-content">
+                <div className="note deal-review-meta-row" style={{ margin: 0 }}>
+                  <div className="deal-review-meta-row__left">
+                    <strong className="deal-review-meta-row__title">Referred by</strong>
+                    <span className="deal-review-meta-row__line">
+                      {deal.referredByLabel}
+                      <span className="muted"> · {deal.referredByEmail}</span>
+                    </span>
+                  </div>
+                  <div className="deal-review-meta-row__right">
+                    <strong className="deal-review-meta-row__title">Approval status</strong>
+                    <span className={statusClass(deal.status)}>{STATUS_LABELS[deal.status]}</span>
+                  </div>
+                </div>
+
+                <form action={handleSave} className="stack-lg" key={`${deal.id}-${deal.updatedAt}`}>
+                  <input type="hidden" name="dealId" value={deal.id} />
+                  <input type="hidden" name="actorRole" value="ADMIN" />
+                  <input type="hidden" name="stage" value={stage} />
+
+                  {formState.status === "error" && formState.error ? (
+                    <div className="form-message" role="alert">
+                      {formState.error}
+                    </div>
+                  ) : null}
+
+                  {formState.status === "success" ? (
+                    <div className="form-message form-message--success" role="status">
+                      Deal saved.
+                    </div>
+                  ) : null}
+
+                  <div className="partner-tier-card" style={{ gap: 12 }}>
+                    <label className="field" style={{ margin: 0 }}>
+                      <span>Stage</span>
+                      <select
+                        aria-label="Deal stage"
+                        className={`select deal-stage-select deal-stage-select--${stageClass}`}
+                        disabled={isPending}
+                        value={stage}
+                        onChange={(event) => setStage(event.target.value as PartnerDealStage)}
+                      >
+                        {STAGE_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                      <small className="muted">
+                        Choose Processing, Won, or Lost, then click Save. Won requires an approved
+                        deal with a deal value to generate commissions.
+                      </small>
+                    </label>
+                  </div>
+
+                  <PartnerDealFormFields
+                    existing={existing}
+                    country={country}
+                    setCountry={setCountry}
+                    dialCode={dialCode}
+                    setDialCode={setDialCode}
+                    getFieldError={getFieldError}
+                    isEdit
+                    actorRole="ADMIN"
+                  />
+
+                  <div className="deal-review-form-actions">
+                    <div className="deal-review-form-actions__primary">
+                      <button className="button" type="submit" disabled={isPending}>
+                        {isPending ? "Saving..." : "Save"}
+                      </button>
+                      <button className="button button-secondary" type="button" onClick={close}>
+                        Close
+                      </button>
+                    </div>
+                    <button
+                      className="button button-delete deal-review-delete-trigger"
+                      type="button"
+                      disabled={isPending}
+                      onClick={() => setConfirmDeleteOpen(true)}
+                    >
+                      <Trash2 size={16} aria-hidden />
+                      Delete this deal
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+
+          {confirmDeleteOpen ? (
+            <div
+              className="dialog-backdrop dialog-backdrop--nested"
+              role="presentation"
+              onMouseDown={() => setConfirmDeleteOpen(false)}
+            >
+              <div
+                className="dialog-panel deal-delete-confirm-panel"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="deal-delete-confirm-title"
+                onMouseDown={(event) => event.stopPropagation()}
+              >
+                <h3 className="deal-delete-confirm-panel__title" id="deal-delete-confirm-title">
+                  Delete this deal?
+                </h3>
+                <p className="muted deal-delete-confirm-panel__lede">
+                  This removes the deal and voids related commission entries. This cannot be undone.
+                </p>
+                <dl className="deal-delete-confirm-panel__meta">
+                  <div>
+                    <dt>Deal</dt>
+                    <dd>
+                      <strong>{deal.name}</strong>
+                      <span className="muted"> · {deal.companyName}</span>
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Referred by</dt>
+                    <dd>
+                      {deal.referredByLabel}
+                      <br />
+                      <span className="muted">{deal.referredByEmail}</span>
+                    </dd>
+                  </div>
+                </dl>
+                <div className="deal-delete-confirm-panel__actions">
+                  <button
+                    className="button button-secondary"
+                    type="button"
+                    disabled={isPending}
+                    onClick={() => setConfirmDeleteOpen(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className="button button-danger"
+                    type="button"
+                    disabled={isPending}
+                    onClick={handleDeleteConfirmed}
+                  >
+                    {isPending ? "Deleting..." : "Delete"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+    </>
+  );
+}
+
+export function AdminPartnerDealReviewDialog({ deal }: AdminPartnerDealReviewDialogProps) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
       <button
         className="button button-secondary deal-review-trigger"
         type="button"
-        onClick={openDialog}
+        onClick={() => setOpen(true)}
       >
         Review
       </button>
       {open ? (
-        <>
-        <div
-          className="dialog-backdrop"
-          role="presentation"
-          onMouseDown={() => {
-            if (confirmDeleteOpen) {
-              setConfirmDeleteOpen(false);
-              return;
-            }
-            close();
-          }}
-        >
-          <div
-            className="dialog-panel add-affiliate-panel deal-review-dialog-panel"
-            role="dialog"
-            aria-modal="true"
-            aria-label={`Review deal: ${deal.name}`}
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <div className="dialog-header dialog-header--deal-review">
-              <div className="dialog-header__copy">
-                <p className="eyebrow">Review deal</p>
-                <div className="deal-review-header-title-row">
-                  <h2>{deal.name}</h2>
-                  {isPendingApproval ? (
-                    <div className="deal-review-header-actions">
-                      <button
-                        className="button deal-review-header-actions__approve"
-                        type="button"
-                        disabled={isPending}
-                        onClick={() => handleReviewDecision("APPROVED")}
-                      >
-                        Approve
-                      </button>
-                      <button
-                        className="button button-secondary deal-review-header-actions__reject"
-                        type="button"
-                        disabled={isPending}
-                        onClick={() => handleReviewDecision("REJECTED")}
-                      >
-                        Reject
-                      </button>
-                    </div>
-                  ) : null}
-                </div>
-                <p className="muted">{deal.companyName}</p>
-              </div>
-              <button className="icon-button" type="button" aria-label="Close" onClick={close}>
-                <X size={18} />
-              </button>
-            </div>
-            <div className="dialog-content stack-lg deal-review-dialog-content">
-              <div className="note deal-review-meta-row" style={{ margin: 0 }}>
-                <div className="deal-review-meta-row__left">
-                  <strong className="deal-review-meta-row__title">Referred by</strong>
-                  <span className="deal-review-meta-row__line">
-                    {deal.referredByLabel}
-                    <span className="muted"> · {deal.referredByEmail}</span>
-                  </span>
-                </div>
-                <div className="deal-review-meta-row__right">
-                  <strong className="deal-review-meta-row__title">Approval status</strong>
-                  <span className={statusClass(deal.status)}>{STATUS_LABELS[deal.status]}</span>
-                </div>
-              </div>
-
-              <div className="partner-tier-card" style={{ gap: 12 }}>
-                <label className="field" style={{ margin: 0 }}>
-                  <span>Stage</span>
-                  <select
-                    aria-label="Deal stage"
-                    className={`select deal-stage-select deal-stage-select--${stageClass}`}
-                    disabled={isPending}
-                    value={stage}
-                    onChange={(event) => handleStageChange(event.target.value as PartnerDealStage)}
-                  >
-                    {STAGE_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                  <small className="muted">
-                    Approve the deal first. Mark Won after setting deal value to auto-generate
-                    upfront and trailing commissions. Lost voids commissions.
-                  </small>
-                </label>
-              </div>
-
-              <form action={handleSave} className="stack-lg" key={`${deal.id}-${deal.updatedAt}`}>
-                <input type="hidden" name="dealId" value={deal.id} />
-                <input type="hidden" name="actorRole" value="ADMIN" />
-
-                {formState.status === "error" && formState.error ? (
-                  <div className="form-message" role="alert">
-                    {formState.error}
-                  </div>
-                ) : null}
-
-                <PartnerDealFormFields
-                  existing={existing}
-                  country={country}
-                  setCountry={setCountry}
-                  dialCode={dialCode}
-                  setDialCode={setDialCode}
-                  getFieldError={getFieldError}
-                  isEdit
-                  actorRole="ADMIN"
-                />
-
-                <div className="deal-review-form-actions">
-                  <div className="deal-review-form-actions__primary">
-                    <button className="button" type="submit" disabled={isPending}>
-                      {isPending ? "Saving..." : "Save changes"}
-                    </button>
-                    <button className="button button-secondary" type="button" onClick={close}>
-                      Close
-                    </button>
-                  </div>
-                  <button
-                    className="button button-delete deal-review-delete-trigger"
-                    type="button"
-                    disabled={isPending}
-                    onClick={() => setConfirmDeleteOpen(true)}
-                  >
-                    <Trash2 size={16} aria-hidden />
-                    Delete the deal
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-
-        {confirmDeleteOpen ? (
-          <div
-            className="dialog-backdrop dialog-backdrop--nested"
-            role="presentation"
-            onMouseDown={() => setConfirmDeleteOpen(false)}
-          >
-            <div
-              className="dialog-panel deal-delete-confirm-panel"
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="deal-delete-confirm-title"
-              onMouseDown={(event) => event.stopPropagation()}
-            >
-              <h3 className="deal-delete-confirm-panel__title" id="deal-delete-confirm-title">
-                Delete this deal?
-              </h3>
-              <p className="muted deal-delete-confirm-panel__lede">
-                This removes the deal and voids related commission entries. This cannot be undone.
-              </p>
-              <dl className="deal-delete-confirm-panel__meta">
-                <div>
-                  <dt>Deal</dt>
-                  <dd>
-                    <strong>{deal.name}</strong>
-                    <span className="muted"> · {deal.companyName}</span>
-                  </dd>
-                </div>
-                <div>
-                  <dt>Referred by</dt>
-                  <dd>
-                    {deal.referredByLabel}
-                    <br />
-                    <span className="muted">{deal.referredByEmail}</span>
-                  </dd>
-                </div>
-              </dl>
-              <div className="deal-delete-confirm-panel__actions">
-                <button
-                  className="button button-secondary"
-                  type="button"
-                  disabled={isPending}
-                  onClick={() => setConfirmDeleteOpen(false)}
-                >
-                  Close
-                </button>
-                <button
-                  className="button button-danger"
-                  type="button"
-                  disabled={isPending}
-                  onClick={handleDeleteConfirmed}
-                >
-                  {isPending ? "Deleting..." : "Delete"}
-                </button>
-              </div>
-            </div>
-          </div>
-        ) : null}
-        </>
+        <AdminPartnerDealReviewPanel
+          key={`${deal.id}-${deal.updatedAt}`}
+          deal={deal}
+          onClose={() => setOpen(false)}
+        />
       ) : null}
     </>
   );
