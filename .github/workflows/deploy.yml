@@ -85,17 +85,41 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
 
-      - name: Trust deploy host
+      - name: Configure SSH for deploy
         run: |
           mkdir -p ~/.ssh
-          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          chmod 700 ~/.ssh
+          touch ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          # Do not rely on ssh-keyscan — it often times out from GitHub runners while SSH still works.
+          # accept-new records the host key on the first successful connection.
+          cat >> ~/.ssh/config <<EOF
+          Host deploy-prod
+            HostName ${DEPLOY_HOST}
+            User ${DEPLOY_USER}
+            BatchMode yes
+            ConnectTimeout 25
+            ServerAliveInterval 15
+            ServerAliveCountMax 3
+            StrictHostKeyChecking accept-new
+            UserKnownHostsFile ~/.ssh/known_hosts
+          EOF
+          chmod 600 ~/.ssh/config
 
       - name: Verify SSH access
         run: |
-          if ! ssh -o BatchMode=yes -o ConnectTimeout=15 "$DEPLOY_USER@$DEPLOY_HOST" "echo deploy-ssh-ok"; then
-            echo "::error::SSH to $DEPLOY_USER@$DEPLOY_HOST failed. Add the public key for DEPLOY_SSH_KEY to authorized_keys on that server (not on your laptop). Run scripts/verify-deploy-ssh.sh locally after fixing."
-            exit 1
-          fi
+          for attempt in 1 2 3 4 5; do
+            if ssh deploy-prod "echo deploy-ssh-ok"; then
+              echo "SSH OK (attempt $attempt)"
+              exit 0
+            fi
+            echo "SSH attempt $attempt failed, retrying in 10s..."
+            sleep 10
+          done
+          echo "::error::SSH to ${DEPLOY_USER}@${DEPLOY_HOST} failed after 5 attempts."
+          echo "Ensure port 22 is open to GitHub Actions IPs and DEPLOY_SSH_KEY's public key is in ~node/.ssh/authorized_keys on the server."
+          echo "Local check: scripts/verify-deploy-ssh.sh"
+          exit 1
 
       - name: Deploy to server
         env:
@@ -103,7 +127,7 @@ jobs:
           GHCR_USER: ${{ github.repository_owner }}
           GHCR_TOKEN: ${{ secrets.GHCR_PULL_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
-          ssh -o BatchMode=yes -o ConnectTimeout=15 "$DEPLOY_USER@$DEPLOY_HOST" bash -s <<EOF
+          ssh deploy-prod bash -s <<EOF
             set -euo pipefail
             cd "$DEPLOY_PATH"
             echo "[deploy] Updating checkout"

@@ -28,7 +28,7 @@ if [[ -f "$HOME/.ssh/authorized_keys" ]] && grep -qF "${PUB_LINE%% *}" "$HOME/.s
 fi
 
 echo "=== SSH test: ${DEPLOY_USER}@${DEPLOY_HOST} ==="
-if ssh -i "$KEY" -o BatchMode=yes -o ConnectTimeout=15 "${DEPLOY_USER}@${DEPLOY_HOST}" "echo deploy-ssh-ok"; then
+if ssh -i "$KEY" -o BatchMode=yes -o ConnectTimeout=25 -o StrictHostKeyChecking=accept-new "${DEPLOY_USER}@${DEPLOY_HOST}" "echo deploy-ssh-ok"; then
   echo "OK — GitHub Actions deploy SSH should work after DEPLOY_SSH_KEY matches this private key."
   exit 0
 fi
