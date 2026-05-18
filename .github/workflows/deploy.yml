@@ -18,6 +18,9 @@ env:
   DEPLOY_USER: node
   DEPLOY_PATH: /home/node/docker-stack/SL-Vendor-Management-Platform
   PROD_URL: https://portal.sugarandleather.com
+  GCP_PROJECT: shining-relic-494616-t5
+  GCP_ZONE: us-central1-a
+  GCP_INSTANCE: rohan-noble-vm
 
 jobs:
   test:
@@ -54,12 +57,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Print deploy workflow provenance
-        run: |
-          echo "Workflow ref: $GITHUB_WORKFLOW_REF"
-          echo "Workflow SHA: $GITHUB_SHA"
-          echo "Deploy host: $DEPLOY_HOST"
-
       - name: Read app version
         id: ver
         run: echo "version=$(cat VERSION 2>/dev/null || echo 0.0.0.0)" >> "$GITHUB_OUTPUT"
@@ -86,51 +83,98 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # --- IAP deploy (preferred; works when port 22 is closed to the internet) ---
+      - name: Authenticate to Google Cloud
+        if: ${{ secrets.GCP_DEPLOY_SA_KEY != '' }}
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_DEPLOY_SA_KEY }}
+
+      - name: Setup gcloud
+        if: ${{ secrets.GCP_DEPLOY_SA_KEY != '' }}
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Verify IAP SSH access
+        if: ${{ secrets.GCP_DEPLOY_SA_KEY != '' }}
+        run: |
+          for attempt in 1 2 3; do
+            if gcloud compute ssh "${DEPLOY_USER}@${GCP_INSTANCE}" \
+              --project="${GCP_PROJECT}" \
+              --zone="${GCP_ZONE}" \
+              --tunnel-through-iap \
+              --quiet \
+              --command="echo deploy-ssh-ok"; then
+              echo "IAP SSH OK (attempt $attempt)"
+              exit 0
+            fi
+            echo "IAP SSH attempt $attempt failed, retrying in 15s..."
+            sleep 15
+          done
+          exit 1
+
+      - name: Deploy via IAP
+        if: ${{ secrets.GCP_DEPLOY_SA_KEY != '' }}
+        env:
+          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+          GHCR_USER: ${{ github.repository_owner }}
+          GHCR_TOKEN: ${{ secrets.GHCR_PULL_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          gcloud compute scp scripts/remote-deploy.sh \
+            "${DEPLOY_USER}@${GCP_INSTANCE}:~/remote-deploy.sh" \
+            --project="${GCP_PROJECT}" \
+            --zone="${GCP_ZONE}" \
+            --tunnel-through-iap \
+            --quiet
+          gcloud compute ssh "${DEPLOY_USER}@${GCP_INSTANCE}" \
+            --project="${GCP_PROJECT}" \
+            --zone="${GCP_ZONE}" \
+            --tunnel-through-iap \
+            --quiet \
+            --command="chmod +x ~/remote-deploy.sh && DEPLOY_PATH='${DEPLOY_PATH}' IMAGE='${IMAGE}' GHCR_USER='${GHCR_USER}' GHCR_TOKEN='${GHCR_TOKEN}' ~/remote-deploy.sh"
+
+      # --- Direct SSH deploy (fallback; requires port 22 open to GitHub runners) ---
       - name: Setup SSH agent
+        if: ${{ secrets.GCP_DEPLOY_SA_KEY == '' }}
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
 
       - name: Configure SSH for deploy
+        if: ${{ secrets.GCP_DEPLOY_SA_KEY == '' }}
         run: |
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
           : > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
-          # Keep host key learning tied to the actual SSH session. ssh-keyscan often
-          # fails from hosted runners even when a real SSH connection succeeds.
           cat >> ~/.ssh/config <<EOF
           Host deploy-prod
             HostName ${DEPLOY_HOST}
             User ${DEPLOY_USER}
             BatchMode yes
             ConnectTimeout 25
-            ServerAliveInterval 15
-            ServerAliveCountMax 3
             StrictHostKeyChecking accept-new
             UserKnownHostsFile ~/.ssh/known_hosts
           EOF
           chmod 600 ~/.ssh/config
 
-      - name: Verify SSH access
+      - name: Verify direct SSH access
+        if: ${{ secrets.GCP_DEPLOY_SA_KEY == '' }}
         run: |
+          echo "::warning::GCP_DEPLOY_SA_KEY not set — using direct SSH. Run ./scripts/setup-gcp-github-deploy.sh for reliable IAP deploy."
           for attempt in 1 2 3 4 5; do
             if ssh deploy-prod "echo deploy-ssh-ok"; then
               echo "SSH OK (attempt $attempt)"
               exit 0
             fi
-            echo "SSH attempt $attempt failed, retrying in 10s..."
             sleep 10
           done
-          echo "::error::SSH to ${DEPLOY_USER}@${DEPLOY_HOST} failed after 5 attempts (often: firewall or sshd not completing banner)."
-          echo "On the VM: sudo systemctl status ssh && sudo ss -tlnp | grep ':22'"
-          echo "GCP: allow tcp:22 on the VM's VPC firewall (GitHub runners use changing IPs — see https://api.github.com/meta actions[])."
-          echo "Ensure DEPLOY_SSH_KEY public key is in ~node/.ssh/authorized_keys on ${DEPLOY_HOST}."
-          echo "Last connection trace:"
-          ssh -vvv -o ConnectTimeout=15 deploy-prod "true" 2>&1 | tail -40 || true
+          echo "::error::Direct SSH to ${DEPLOY_HOST} failed (port 22 likely blocked)."
+          echo "Run on your Mac: gcloud auth login && ./scripts/setup-gcp-github-deploy.sh"
+          echo "Or open port 22: ./scripts/gcp-open-port-22.sh"
           exit 1
 
-      - name: Deploy to server
+      - name: Deploy via direct SSH
+        if: ${{ secrets.GCP_DEPLOY_SA_KEY == '' }}
         env:
           IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
           GHCR_USER: ${{ github.repository_owner }}
@@ -138,18 +182,16 @@ jobs:
         run: |
           ssh deploy-prod bash -s <<EOF
             set -euo pipefail
-            cd "$DEPLOY_PATH"
-            echo "[deploy] Updating checkout"
-            git fetch --quiet origin main
-            git pull --ff-only origin main
-            echo "[deploy] Logging in to ghcr.io"
-            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
-            echo "[deploy] Pulling image: $IMAGE"
-            docker pull "$IMAGE"
-            echo "[deploy] Restarting vms-app"
-            export VMS_APP_IMAGE="$IMAGE"
+            export DEPLOY_PATH="${DEPLOY_PATH}"
+            export IMAGE="${IMAGE}"
+            export GHCR_USER="${GHCR_USER}"
+            export GHCR_TOKEN="${GHCR_TOKEN}"
+            cd "\$DEPLOY_PATH"
+            git fetch --quiet origin main && git pull --ff-only origin main
+            echo "\$GHCR_TOKEN" | docker login ghcr.io -u "\$GHCR_USER" --password-stdin
+            docker pull "\$IMAGE"
+            export VMS_APP_IMAGE="\$IMAGE"
             docker compose up -d --no-build vms-app
-            echo "[deploy] Pruning old images"
             docker image prune -f
           EOF
 

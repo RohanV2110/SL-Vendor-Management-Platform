@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Verifies GitHub deploy SSH access to production. Run on your Mac after adding the
-# public key to the SERVER (node@ production host), not to ~/.ssh/authorized_keys locally.
+# Verifies deploy SSH to production. GitHub Actions uses GCP IAP (gcloud), not direct port 22.
+# For IAP: run ./scripts/setup-gcp-github-deploy.sh after gcloud auth login.
+# This script tests direct SSH (optional); use: gcloud compute ssh node@rohan-noble-vm --zone us-central1-a --project shining-relic-494616-t5 --tunnel-through-iap
 set -euo pipefail
 
 DEPLOY_USER="${DEPLOY_USER:-node}"
