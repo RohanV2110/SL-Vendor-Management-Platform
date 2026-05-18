@@ -116,9 +116,12 @@ jobs:
             echo "SSH attempt $attempt failed, retrying in 10s..."
             sleep 10
           done
-          echo "::error::SSH to ${DEPLOY_USER}@${DEPLOY_HOST} failed after 5 attempts."
-          echo "Ensure port 22 is open to GitHub Actions IPs and DEPLOY_SSH_KEY's public key is in ~node/.ssh/authorized_keys on the server."
-          echo "Local check: scripts/verify-deploy-ssh.sh"
+          echo "::error::SSH to ${DEPLOY_USER}@${DEPLOY_HOST} failed after 5 attempts (often: firewall or sshd not completing banner)."
+          echo "On the VM: sudo systemctl status ssh && sudo ss -tlnp | grep ':22'"
+          echo "GCP: allow tcp:22 on the VM's VPC firewall (GitHub runners use changing IPs — see https://api.github.com/meta actions[])."
+          echo "Ensure DEPLOY_SSH_KEY public key is in ~node/.ssh/authorized_keys on ${DEPLOY_HOST}."
+          echo "Last connection trace:"
+          ssh -vvv -o ConnectTimeout=15 deploy-prod "true" 2>&1 | tail -40 || true
           exit 1
 
       - name: Deploy to server
