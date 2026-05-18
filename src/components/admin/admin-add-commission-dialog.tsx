@@ -1,13 +1,15 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { X } from "lucide-react";
-import { createCommissionAction } from "@/lib/actions";
+import { createCommissionAction, type CreateCommissionState } from "@/lib/actions";
 import { SubmitButton } from "@/components/submit-button";
 
 const newEntryTypes = ["UPFRONT", "TRAILING", "ADJUSTMENT"] as const;
 const newEntryStatuses = ["APPROVED", "SCHEDULED", "PAYABLE", "PAID"] as const;
+
+const initialState: CreateCommissionState = { status: "idle" };
 
 export type AdminAddCommissionPartnerOption = {
   id: string;
@@ -21,11 +23,28 @@ type AdminAddCommissionDialogProps = {
 export function AdminAddCommissionDialog({ partners }: AdminAddCommissionDialogProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [state, setState] = useState<CreateCommissionState>(initialState);
+  const [isPending, startTransition] = useTransition();
 
-  async function handleCreateCommission(formData: FormData) {
-    await createCommissionAction(formData);
+  function resetForm() {
+    setState(initialState);
+  }
+
+  function close() {
     setOpen(false);
-    router.refresh();
+    resetForm();
+  }
+
+  function handleCreateCommission(formData: FormData) {
+    startTransition(async () => {
+      const result = await createCommissionAction(state, formData);
+      setState(result);
+      if (result.status === "success") {
+        setOpen(false);
+        resetForm();
+        router.refresh();
+      }
+    });
   }
 
   return (
@@ -40,11 +59,7 @@ export function AdminAddCommissionDialog({ partners }: AdminAddCommissionDialogP
         Add commission
       </button>
       {open ? (
-        <div
-          className="dialog-backdrop"
-          role="presentation"
-          onMouseDown={() => setOpen(false)}
-        >
+        <div className="dialog-backdrop" role="presentation" onMouseDown={close}>
           <div
             className="dialog-panel add-affiliate-panel"
             role="dialog"
@@ -57,7 +72,7 @@ export function AdminAddCommissionDialog({ partners }: AdminAddCommissionDialogP
                 <p className="eyebrow">Manual ledger entry</p>
                 <h2 id="add-commission-dialog-title">Add commission</h2>
               </div>
-              <button className="icon-button" type="button" aria-label="Close" onClick={() => setOpen(false)}>
+              <button className="icon-button" type="button" aria-label="Close" onClick={close}>
                 <X size={18} />
               </button>
             </div>
@@ -68,6 +83,12 @@ export function AdminAddCommissionDialog({ partners }: AdminAddCommissionDialogP
                 </div>
               ) : (
                 <form action={handleCreateCommission} className="stack-md">
+                  {state.status === "error" && state.error ? (
+                    <div className="form-message" role="alert">
+                      {state.error}
+                    </div>
+                  ) : null}
+
                   <div className="two-col">
                     <label className="field">
                       <span>Partner</span>
@@ -101,6 +122,7 @@ export function AdminAddCommissionDialog({ partners }: AdminAddCommissionDialogP
                         className="input"
                         name="amount"
                         type="number"
+                        min="0.01"
                         step="0.01"
                         placeholder="e.g. 250.00"
                         required
@@ -133,7 +155,12 @@ export function AdminAddCommissionDialog({ partners }: AdminAddCommissionDialogP
                     />
                   </label>
 
-                  <SubmitButton className="button" label="Add commission" pendingLabel="Saving..." />
+                  <SubmitButton
+                    className="button"
+                    label="Add commission"
+                    pendingLabel="Saving..."
+                    disabled={isPending}
+                  />
                 </form>
               )}
             </div>

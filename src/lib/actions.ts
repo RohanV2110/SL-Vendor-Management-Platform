@@ -457,26 +457,44 @@ export async function createClawbackAction(formData: FormData) {
   revalidatePath("/admin/commissions");
 }
 
-export async function createCommissionAction(formData: FormData) {
+export type CreateCommissionState = {
+  status: "idle" | "error" | "success";
+  error?: string;
+};
+
+const manualCommissionStatuses: CommissionLedgerStatus[] = [
+  CommissionLedgerStatus.APPROVED,
+  CommissionLedgerStatus.SCHEDULED,
+  CommissionLedgerStatus.PAYABLE,
+  CommissionLedgerStatus.PAID
+];
+
+export async function createCommissionAction(
+  _prevState: CreateCommissionState,
+  formData: FormData
+): Promise<CreateCommissionState> {
   const admin = await requireRole("ADMIN");
 
   const partnerAccountId = getRequiredString(formData, "partnerAccountId").trim();
   const typeRaw = getRequiredString(formData, "type").trim();
-  const statusRaw = getOptionalString(formData, "status");
+  const statusRaw = getOptionalString(formData, "status")?.trim();
   const amountRaw = getRequiredString(formData, "amount").trim();
   const description = getRequiredString(formData, "description").trim();
   const referralId = getOptionalString(formData, "referralId")?.trim() || undefined;
   const scheduledForRaw = getOptionalString(formData, "scheduledFor")?.trim();
 
   if (!partnerAccountId) {
-    throw new Error("Select a partner.");
+    return { status: "error", error: "Select a partner." };
   }
   const amount = Number(amountRaw);
   if (!Number.isFinite(amount)) {
-    throw new Error("Amount must be a valid number.");
+    return { status: "error", error: "Amount must be a valid number." };
+  }
+  if (amount <= 0) {
+    return { status: "error", error: "Amount must be greater than zero." };
   }
   if (!description) {
-    throw new Error("Description is required.");
+    return { status: "error", error: "Description is required." };
   }
 
   const allowedTypes: CommissionEntryType[] = [
@@ -486,24 +504,47 @@ export async function createCommissionAction(formData: FormData) {
   ];
   const type = typeRaw as CommissionEntryType;
   if (!allowedTypes.includes(type)) {
-    throw new Error("Unsupported commission type.");
+    return { status: "error", error: "Unsupported commission type." };
   }
 
-  const status = statusRaw ? (statusRaw as CommissionLedgerStatus) : undefined;
+  let status: CommissionLedgerStatus | undefined;
+  if (statusRaw) {
+    if (!manualCommissionStatuses.includes(statusRaw as CommissionLedgerStatus)) {
+      return { status: "error", error: "Unsupported commission status." };
+    }
+    status = statusRaw as CommissionLedgerStatus;
+  }
 
-  await createCommissionEntry({
-    adminUserId: admin.id,
-    partnerAccountId,
-    type,
-    status,
-    amount,
-    description,
-    referralId: referralId ?? null,
-    scheduledFor: scheduledForRaw ? new Date(scheduledForRaw) : null
-  });
+  let scheduledFor: Date | null = null;
+  if (scheduledForRaw) {
+    const parsed = new Date(`${scheduledForRaw}T12:00:00`);
+    if (Number.isNaN(parsed.getTime())) {
+      return { status: "error", error: "Scheduled date is invalid." };
+    }
+    scheduledFor = parsed;
+  }
+
+  try {
+    await createCommissionEntry({
+      adminUserId: admin.id,
+      partnerAccountId,
+      type,
+      status,
+      amount,
+      description,
+      referralId: referralId ?? null,
+      scheduledFor
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Failed to add commission. Try again.";
+    return { status: "error", error: message };
+  }
 
   revalidatePath("/admin/commissions");
   revalidatePath("/partner/earnings");
+
+  return { status: "success" };
 }
 
 export async function startStripeOnboardingAction() {

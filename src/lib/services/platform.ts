@@ -2278,6 +2278,27 @@ export async function updateCommissionStatus(input: {
   });
 }
 
+async function resolveAgreementForManualCommission(
+  tx: Prisma.TransactionClient,
+  partnerAccountId: string
+) {
+  const orderBy = [{ effectiveStartDate: "desc" as const }, { version: "desc" as const }];
+  const activeOrDraft = await tx.agreement.findFirst({
+    where: {
+      partnerAccountId,
+      status: { in: [AgreementStatus.ACTIVE, AgreementStatus.DRAFT] }
+    },
+    orderBy
+  });
+  if (activeOrDraft) {
+    return activeOrDraft;
+  }
+  return tx.agreement.findFirst({
+    where: { partnerAccountId },
+    orderBy
+  });
+}
+
 export async function createCommissionEntry(input: {
   adminUserId: string;
   partnerAccountId: string;
@@ -2291,6 +2312,9 @@ export async function createCommissionEntry(input: {
   if (!Number.isFinite(input.amount)) {
     throw new Error("Amount must be a number.");
   }
+  if (input.amount <= 0) {
+    throw new Error("Amount must be greater than zero.");
+  }
   if (input.type === CommissionEntryType.CLAWBACK) {
     throw new Error("Use the clawback flow to create clawbacks.");
   }
@@ -2303,15 +2327,11 @@ export async function createCommissionEntry(input: {
       throw new Error("Partner not found.");
     }
 
-    const agreement = await tx.agreement.findFirst({
-      where: {
-        partnerAccountId: input.partnerAccountId,
-        status: { in: [AgreementStatus.ACTIVE, AgreementStatus.DRAFT] }
-      },
-      orderBy: [{ effectiveStartDate: "desc" }, { version: "desc" }]
-    });
+    const agreement = await resolveAgreementForManualCommission(tx, input.partnerAccountId);
     if (!agreement) {
-      throw new Error("Partner has no active agreement.");
+      throw new Error(
+        "This partner has no agreement on file. Activate the partner and assign a tier before adding a commission."
+      );
     }
 
     const status = input.status ?? CommissionLedgerStatus.APPROVED;
