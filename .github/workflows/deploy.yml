@@ -54,6 +54,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Print deploy workflow provenance
+        run: |
+          echo "Workflow ref: $GITHUB_WORKFLOW_REF"
+          echo "Workflow SHA: $GITHUB_SHA"
+          echo "Deploy host: $DEPLOY_HOST"
+
       - name: Read app version
         id: ver
         run: echo "version=$(cat VERSION 2>/dev/null || echo 0.0.0.0)" >> "$GITHUB_OUTPUT"
@@ -89,10 +95,10 @@ jobs:
         run: |
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          touch ~/.ssh/known_hosts
+          : > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
-          # Do not rely on ssh-keyscan — it often times out from GitHub runners while SSH still works.
-          # accept-new records the host key on the first successful connection.
+          # Keep host key learning tied to the actual SSH session. ssh-keyscan often
+          # fails from hosted runners even when a real SSH connection succeeds.
           cat >> ~/.ssh/config <<EOF
           Host deploy-prod
             HostName ${DEPLOY_HOST}
