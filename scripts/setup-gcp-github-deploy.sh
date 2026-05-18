@@ -63,6 +63,22 @@ echo "Granting IAM roles to service account..."
 bind roles/compute.viewer
 bind roles/compute.instanceAdmin.v1
 bind roles/iap.tunnelResourceAccessor
+bind roles/compute.osAdminLogin
+
+INSTANCE_SA="$(gcloud compute instances describe "$INSTANCE" \
+  --project="$PROJECT" \
+  --zone="$ZONE" \
+  --format='value(serviceAccounts[0].email)' 2>/dev/null || true)"
+if [[ -n "$INSTANCE_SA" ]]; then
+  echo "Granting roles/iam.serviceAccountUser on instance SA: $INSTANCE_SA"
+  gcloud iam service-accounts add-iam-policy-binding "$INSTANCE_SA" \
+    --project="$PROJECT" \
+    --member="serviceAccount:${SA_EMAIL}" \
+    --role="roles/iam.serviceAccountUser" \
+    --quiet >/dev/null
+else
+  echo "WARN: Could not resolve instance service account; grant roles/iam.serviceAccountUser manually."
+fi
 
 echo "Configuring Workload Identity Federation for GitHub..."
 if ! gcloud iam workload-identity-pools describe "$POOL" \

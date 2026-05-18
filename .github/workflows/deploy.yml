@@ -20,6 +20,7 @@ env:
   GCP_PROJECT: shining-relic-494616-t5
   GCP_ZONE: us-central1-a
   GCP_INSTANCE: rohan-noble-vm
+  DEPLOY_HOST: 35.239.155.232
   GCP_DEPLOY_SA_EMAIL: github-vms-deploy@shining-relic-494616-t5.iam.gserviceaccount.com
   GCP_WORKLOAD_IDENTITY_PROVIDER: projects/156522544148/locations/global/workloadIdentityPools/github/providers/github
 
@@ -94,8 +95,10 @@ jobs:
       - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Verify IAP SSH access
+      - name: Verify SSH access
+        id: ssh
         run: |
+          set -e
           for attempt in 1 2 3; do
             if gcloud compute ssh "${GCP_INSTANCE}" \
               --project="${GCP_PROJECT}" \
@@ -104,15 +107,38 @@ jobs:
               --quiet \
               --command="echo deploy-ssh-ok"; then
               echo "IAP SSH OK (attempt $attempt)"
+              echo "method=iap" >> "$GITHUB_OUTPUT"
               exit 0
             fi
             echo "IAP SSH attempt $attempt failed, retrying in 15s..."
             sleep 15
           done
-          echo "::error::IAP SSH failed. Re-run ./scripts/setup-gcp-github-deploy.sh"
+          if [ -z "${{ secrets.DEPLOY_SSH_KEY }}" ]; then
+            echo "::error::IAP SSH failed and DEPLOY_SSH_KEY is not set."
+            exit 1
+          fi
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          for attempt in 1 2 3; do
+            if ssh -i ~/.ssh/deploy_key \
+              -o BatchMode=yes \
+              -o StrictHostKeyChecking=accept-new \
+              -o ConnectTimeout=30 \
+              "${DEPLOY_USER}@${DEPLOY_HOST}" \
+              "echo deploy-ssh-ok"; then
+              echo "Direct SSH OK (attempt $attempt)"
+              echo "method=direct" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "Direct SSH attempt $attempt failed, retrying in 15s..."
+            sleep 15
+          done
+          echo "::error::Both IAP and direct SSH failed."
           exit 1
 
       - name: Deploy via IAP
+        if: steps.ssh.outputs.method == 'iap'
         env:
           IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
           GHCR_USER: ${{ github.repository_owner }}
@@ -130,6 +156,24 @@ jobs:
             --tunnel-through-iap \
             --quiet \
             --command="chmod +x ~/remote-deploy.sh && DEPLOY_PATH='${DEPLOY_PATH}' IMAGE='${IMAGE}' GHCR_USER='${GHCR_USER}' GHCR_TOKEN='${GHCR_TOKEN}' ~/remote-deploy.sh"
+
+      - name: Deploy via direct SSH
+        if: steps.ssh.outputs.method == 'direct'
+        env:
+          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+          GHCR_USER: ${{ github.repository_owner }}
+          GHCR_TOKEN: ${{ secrets.GHCR_PULL_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          scp -i ~/.ssh/deploy_key \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=accept-new \
+            scripts/remote-deploy.sh \
+            "${DEPLOY_USER}@${DEPLOY_HOST}:~/remote-deploy.sh"
+          ssh -i ~/.ssh/deploy_key \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=accept-new \
+            "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "chmod +x ~/remote-deploy.sh && DEPLOY_PATH='${DEPLOY_PATH}' IMAGE='${IMAGE}' GHCR_USER='${GHCR_USER}' GHCR_TOKEN='${GHCR_TOKEN}' ~/remote-deploy.sh"
 
       - name: Health check
         run: |
