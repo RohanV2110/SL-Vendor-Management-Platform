@@ -651,6 +651,12 @@ export async function approvePartnerAccount(input: {
     }
 
     if (partner.status === PartnerAccountStatus.ACTIVE) {
+      await ensurePartnerAgreementRecord(
+        tx,
+        partner.id,
+        input.tierId,
+        partner.application.productId
+      );
       return partner;
     }
 
@@ -698,20 +704,12 @@ export async function approvePartnerAccount(input: {
       }
     });
 
-    const activeAgreement = await tx.agreement.findFirst({
-      where: {
-        partnerAccountId: partner.id,
-        status: { in: [AgreementStatus.DRAFT, AgreementStatus.ACTIVE] }
-      },
-      orderBy: [{ effectiveStartDate: "desc" }, { version: "desc" }]
-    });
-
-    if (activeAgreement) {
-      await tx.agreement.update({
-        where: { id: activeAgreement.id },
-        data: { status: AgreementStatus.ACTIVE }
-      });
-    }
+    await ensurePartnerAgreementRecord(
+      tx,
+      partner.id,
+      input.tierId,
+      partner.application.productId
+    );
 
     await createPartnerNotification(
       tx,
@@ -769,6 +767,8 @@ export async function updatePartnerTier(input: {
       },
       data: { tierId: input.tierId }
     });
+
+    await ensurePartnerAgreementRecord(tx, input.partnerAccountId, input.tierId);
 
     await tx.partnerApplication.update({
       where: { id: existing.applicationId },
@@ -894,6 +894,72 @@ async function resolvePartnerDealTierRule(tx: Prisma.TransactionClient, tierId: 
   return tx.tierRule.findFirst({
     where: { tierId, isActive: true, productId: null },
     orderBy: { updatedAt: "desc" }
+  });
+}
+
+/** Ledger entries require an Agreement row; activation used to set tier without creating one. */
+async function ensurePartnerAgreementRecord(
+  tx: Prisma.TransactionClient,
+  partnerAccountId: string,
+  tierId: string,
+  productId?: string | null
+) {
+  const orderBy = [{ effectiveStartDate: "desc" as const }, { version: "desc" as const }];
+
+  const activeOrDraft = await tx.agreement.findFirst({
+    where: {
+      partnerAccountId,
+      status: { in: [AgreementStatus.DRAFT, AgreementStatus.ACTIVE] }
+    },
+    orderBy
+  });
+
+  if (activeOrDraft) {
+    if (activeOrDraft.tierId !== tierId || activeOrDraft.status !== AgreementStatus.ACTIVE) {
+      return tx.agreement.update({
+        where: { id: activeOrDraft.id },
+        data: { tierId, status: AgreementStatus.ACTIVE }
+      });
+    }
+    return activeOrDraft;
+  }
+
+  const latest = await tx.agreement.findFirst({
+    where: { partnerAccountId },
+    orderBy
+  });
+
+  if (latest) {
+    return tx.agreement.update({
+      where: { id: latest.id },
+      data: { tierId, status: AgreementStatus.ACTIVE }
+    });
+  }
+
+  const tierRule = await resolvePartnerDealTierRule(tx, tierId);
+  const version = await tx.agreement.count({ where: { partnerAccountId } });
+
+  return tx.agreement.create({
+    data: {
+      partnerAccountId,
+      tierId,
+      productId: productId ?? null,
+      name: "Partner Agreement",
+      version: version + 1,
+      status: AgreementStatus.ACTIVE,
+      effectiveStartDate: new Date(),
+      upfrontCommissionType: tierRule?.upfrontCommissionType ?? null,
+      upfrontCommissionValue: tierRule?.upfrontCommissionValue ?? null,
+      trailingCommissionType: tierRule?.trailingCommissionType ?? null,
+      trailingCommissionValue: tierRule?.trailingCommissionValue ?? null,
+      trailingDurationMonths: tierRule?.trailingDurationMonths ?? null,
+      trailingCadenceMonths: tierRule?.trailingCadenceMonths ?? null,
+      clawbackWindowDays: tierRule?.clawbackWindowDays ?? null,
+      quarterlyApprovedReferralsMin: tierRule?.quarterlyApprovedReferralsMin ?? null,
+      quarterlyConvertedDealsMin: tierRule?.quarterlyConvertedDealsMin ?? null,
+      quarterlyRevenueMin: tierRule?.quarterlyRevenueMin ?? null,
+      quarterlyCommissionMin: tierRule?.quarterlyCommissionMin ?? null
+    }
   });
 }
 
@@ -2278,27 +2344,6 @@ export async function updateCommissionStatus(input: {
   });
 }
 
-async function resolveAgreementForManualCommission(
-  tx: Prisma.TransactionClient,
-  partnerAccountId: string
-) {
-  const orderBy = [{ effectiveStartDate: "desc" as const }, { version: "desc" as const }];
-  const activeOrDraft = await tx.agreement.findFirst({
-    where: {
-      partnerAccountId,
-      status: { in: [AgreementStatus.ACTIVE, AgreementStatus.DRAFT] }
-    },
-    orderBy
-  });
-  if (activeOrDraft) {
-    return activeOrDraft;
-  }
-  return tx.agreement.findFirst({
-    where: { partnerAccountId },
-    orderBy
-  });
-}
-
 export async function createCommissionEntry(input: {
   adminUserId: string;
   partnerAccountId: string;
@@ -2327,12 +2372,15 @@ export async function createCommissionEntry(input: {
       throw new Error("Partner not found.");
     }
 
-    const agreement = await resolveAgreementForManualCommission(tx, input.partnerAccountId);
-    if (!agreement) {
-      throw new Error(
-        "This partner has no agreement on file. Activate the partner and assign a tier before adding a commission."
-      );
+    if (!partner.tierId) {
+      throw new Error("Assign a tier to this partner before adding a commission.");
     }
+
+    const agreement = await ensurePartnerAgreementRecord(
+      tx,
+      input.partnerAccountId,
+      partner.tierId
+    );
 
     const status = input.status ?? CommissionLedgerStatus.APPROVED;
 
