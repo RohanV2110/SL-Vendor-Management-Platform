@@ -5,7 +5,7 @@
 set -euo pipefail
 
 DEPLOY_USER="${DEPLOY_USER:-node}"
-DEPLOY_HOST="${DEPLOY_HOST:-34.122.29.156}"
+DEPLOY_HOST="${DEPLOY_HOST:-35.239.155.232}"
 KEY="${DEPLOY_KEY:-$HOME/.ssh/vms_deploy}"
 
 if [[ ! -f "$KEY" ]]; then

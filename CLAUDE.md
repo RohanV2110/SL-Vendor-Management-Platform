@@ -71,7 +71,7 @@ Vitest with `jsdom` and the `@/*` alias (`vitest.config.ts`). `tests/setup.ts` i
 - Deploy workflow: `.github/workflows/deploy.yml` (test → build & push to GHCR → IAP deploy via `gcloud compute ssh` to `node@rohan-noble-vm` in `us-central1-a` / project `shining-relic-494616-t5` → health check)
 - Image registry: `ghcr.io/rohanv2110/sl-vendor-management-platform` (tags: `latest`, `sha-<commit>`, `v<VERSION>`)
 - Deploy status command: `gh run list --workflow=deploy.yml --limit=1`
-- Required repo secret: `GCP_DEPLOY_SA_KEY` (GCP service account JSON for IAP deploy). One-time setup: `./scripts/setup-gcp-github-deploy.sh` after `gcloud auth login`. Optional: `DEPLOY_SSH_KEY` (legacy direct SSH; port 22 is often blocked from GitHub runners).
+- Deploy auth: GitHub OIDC → GCP Workload Identity Federation (no SA JSON keys; org policy blocks key creation). One-time: `./scripts/setup-gcp-github-deploy.sh` after `gcloud auth login`. Workflow env: `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_DEPLOY_SA_EMAIL`.
 - Merge method: squash
 - Project type: web app (Next.js 15 + Prisma, containerized via Dockerfile + docker-compose)
 - Post-deploy health check: `curl -fsS https://portal.sugarandleather.com/ -o /dev/null` (probe was unreachable from this sandbox at setup time — verify from a network with access)

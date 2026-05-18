@@ -7,6 +7,15 @@ set -euo pipefail
 : "${GHCR_USER:?GHCR_USER is required}"
 : "${GHCR_TOKEN:?GHCR_TOKEN is required}"
 
+if [ "$(whoami)" != "node" ]; then
+  exec sudo -u node -H \
+    DEPLOY_PATH="$DEPLOY_PATH" \
+    IMAGE="$IMAGE" \
+    GHCR_USER="$GHCR_USER" \
+    GHCR_TOKEN="$GHCR_TOKEN" \
+    bash "$0"
+fi
+
 cd "$DEPLOY_PATH"
 echo "[deploy] Updating checkout"
 git fetch --quiet origin main
