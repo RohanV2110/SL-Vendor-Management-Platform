@@ -144,8 +144,9 @@ jobs:
           GHCR_USER: ${{ github.repository_owner }}
           GHCR_TOKEN: ${{ secrets.GHCR_PULL_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
+          REMOTE_SCRIPT=/tmp/vms-remote-deploy.sh
           gcloud compute scp scripts/remote-deploy.sh \
-            "${GCP_INSTANCE}:~/remote-deploy.sh" \
+            "${GCP_INSTANCE}:${REMOTE_SCRIPT}" \
             --project="${GCP_PROJECT}" \
             --zone="${GCP_ZONE}" \
             --tunnel-through-iap \
@@ -155,7 +156,7 @@ jobs:
             --zone="${GCP_ZONE}" \
             --tunnel-through-iap \
             --quiet \
-            --command="chmod +x ~/remote-deploy.sh && DEPLOY_PATH='${DEPLOY_PATH}' IMAGE='${IMAGE}' GHCR_USER='${GHCR_USER}' GHCR_TOKEN='${GHCR_TOKEN}' ~/remote-deploy.sh"
+            --command="DEPLOY_PATH='${DEPLOY_PATH}' IMAGE='${IMAGE}' GHCR_USER='${GHCR_USER}' GHCR_TOKEN='${GHCR_TOKEN}' bash ${REMOTE_SCRIPT}"
 
       - name: Deploy via direct SSH
         if: steps.ssh.outputs.method == 'direct'
@@ -164,16 +165,17 @@ jobs:
           GHCR_USER: ${{ github.repository_owner }}
           GHCR_TOKEN: ${{ secrets.GHCR_PULL_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
+          REMOTE_SCRIPT=/tmp/vms-remote-deploy.sh
           scp -i ~/.ssh/deploy_key \
             -o BatchMode=yes \
             -o StrictHostKeyChecking=accept-new \
             scripts/remote-deploy.sh \
-            "${DEPLOY_USER}@${DEPLOY_HOST}:~/remote-deploy.sh"
+            "${DEPLOY_USER}@${DEPLOY_HOST}:${REMOTE_SCRIPT}"
           ssh -i ~/.ssh/deploy_key \
             -o BatchMode=yes \
             -o StrictHostKeyChecking=accept-new \
             "${DEPLOY_USER}@${DEPLOY_HOST}" \
-            "chmod +x ~/remote-deploy.sh && DEPLOY_PATH='${DEPLOY_PATH}' IMAGE='${IMAGE}' GHCR_USER='${GHCR_USER}' GHCR_TOKEN='${GHCR_TOKEN}' ~/remote-deploy.sh"
+            "DEPLOY_PATH='${DEPLOY_PATH}' IMAGE='${IMAGE}' GHCR_USER='${GHCR_USER}' GHCR_TOKEN='${GHCR_TOKEN}' bash ${REMOTE_SCRIPT}"
 
       - name: Health check
         run: |
