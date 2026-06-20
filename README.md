@@ -1,5 +1,24 @@
 # Sugar Leather Partner Platform
 
+The vendor/partner portal for Sugar & Leather's affiliate program: partners
+apply, get vetted and activated on a commission tier, drive signups through a
+referral code and the Aries signup webhook, submit deals for review, and accrue
+commissions in an auditable ledger that admins batch into payouts.
+
+## Documentation
+
+Full developer and operator documentation lives in [`docs/`](docs/README.md),
+organized by the [Diátaxis](https://diataxis.fr) framework:
+
+- **New here?** [Getting started](docs/tutorials/getting-started.md)
+- **How-to:** [run locally](docs/how-to/run-locally.md) · [onboard a partner](docs/how-to/onboard-a-partner.md) · [configure the Aries webhook](docs/how-to/configure-the-aries-signup-webhook.md) · [record a payout](docs/how-to/record-a-payout.md) · [deploy](docs/how-to/deploy.md)
+- **Reference:** [configuration](docs/reference/configuration.md) · [data model](docs/reference/data-model.md) · [routes & server actions](docs/reference/routes-and-server-actions.md)
+- **Explanation:** [architecture](docs/explanation/architecture.md) · [commissions & attribution](docs/explanation/commission-and-attribution.md)
+
+> The deploy notes below are a quick summary. The authoritative deploy guide,
+> kept in sync with `.github/workflows/deploy.yml`, is
+> [docs/how-to/deploy.md](docs/how-to/deploy.md).
+
 ## Docker
 
 This compose file connects VMS to the already-running PostgreSQL service on the shared
