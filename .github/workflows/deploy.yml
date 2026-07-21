@@ -16,7 +16,7 @@ env:
   IMAGE_NAME: rohanv2110/sl-vendor-management-platform
   DEPLOY_USER: node
   DEPLOY_PATH: /home/node/docker-stack/SL-Vendor-Management-Platform
-  PROD_URL: https://portal.sugarandleather.com
+  PROD_URL: https://partners.sugarandleather.com
   GCP_PROJECT: shining-relic-494616-t5
   GCP_ZONE: us-central1-a
   GCP_INSTANCE: rohan-noble-vm

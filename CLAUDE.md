@@ -67,18 +67,18 @@ Vitest with `jsdom` and the `@/*` alias (`vitest.config.ts`). `tests/setup.ts` i
 
 ## Deploy Configuration (configured by /setup-deploy)
 - Platform: GitHub Actions (build container image + SSH deploy)
-- Production URL: https://portal.sugarandleather.com
+- Production URL: https://partners.sugarandleather.com
 - Deploy workflow: `.github/workflows/deploy.yml` (test → build & push to GHCR → IAP deploy via `gcloud compute ssh` to `node@rohan-noble-vm` in `us-central1-a` / project `shining-relic-494616-t5` → health check)
 - Image registry: `ghcr.io/rohanv2110/sl-vendor-management-platform` (tags: `latest`, `sha-<commit>`, `v<VERSION>`)
 - Deploy status command: `gh run list --workflow=deploy.yml --limit=1`
 - Deploy auth: GitHub OIDC → GCP Workload Identity Federation (no SA JSON keys; org policy blocks key creation). One-time: `./scripts/setup-gcp-github-deploy.sh` after `gcloud auth login`. Workflow env: `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_DEPLOY_SA_EMAIL`.
 - Merge method: squash
 - Project type: web app (Next.js 15 + Prisma, containerized via Dockerfile + docker-compose)
-- Post-deploy health check: `curl -fsS https://portal.sugarandleather.com/ -o /dev/null` (probe was unreachable from this sandbox at setup time — verify from a network with access)
+- Post-deploy health check: `curl -fsS https://partners.sugarandleather.com/ -o /dev/null` (probe was unreachable from this sandbox at setup time — verify from a network with access)
 
 ### Custom deploy hooks
 - Pre-merge: `npm run build` (runs `prisma generate && next build`); `npm run test`
 - Deploy trigger: GitHub Actions workflow on push to `main` (`.github/workflows/deploy.yml`)
 - Deploy status: `gh run watch` on the deploy workflow run, then HTTP probe of production URL
-- Health check: `https://portal.sugarandleather.com/`
+- Health check: `https://partners.sugarandleather.com/`
 - Container entrypoint: `scripts/docker-init-and-start.sh` waits for Postgres, runs `prisma db push`, then `npm run start`. Any deploy must run this entrypoint or replicate its steps.

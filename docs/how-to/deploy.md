@@ -91,12 +91,12 @@ The `deploy` job has permissions `contents: read`, `packages: write`, `id-token:
 
   Expected result: the run shows as completed and successful.
 
-- **Check the health-check step.** The workflow polls the public URL up to 30 times (5 seconds apart, about 150 seconds total) with `curl -s -o /dev/null -w '%{http_code}' --max-time 5 https://portal.sugarandleather.com/`. It passes on HTTP `200`, `302`, or `307`. The log prints `Production responding (HTTP <code>) after <n>s`.
+- **Check the health-check step.** The workflow polls the public URL up to 30 times (5 seconds apart, about 150 seconds total) with `curl -s -o /dev/null -w '%{http_code}' --max-time 5 https://partners.sugarandleather.com/`. It passes on HTTP `200`, `302`, or `307`. The log prints `Production responding (HTTP <code>) after <n>s`.
 
 - **Hit the URL yourself.**
 
   ```bash
-  curl -s -o /dev/null -w '%{http_code}\n' https://portal.sugarandleather.com/
+  curl -s -o /dev/null -w '%{http_code}\n' https://partners.sugarandleather.com/
   ```
 
   Expected result: `200`, `302`, or `307`.

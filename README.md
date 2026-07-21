@@ -55,7 +55,7 @@ Pushes to `main` trigger the GitHub Actions workflow at `.github/workflows/deplo
 1. Runs lint (`npm run lint`) and tests (`npm test`, with Prisma client generation)
 2. Builds and pushes a Docker image to GHCR (`ghcr.io/rohanv2110/sl-vendor-management-platform`, tagged `latest`, `sha-<commit>`, and `v<VERSION>`)
 3. Authenticates to GCP keylessly via GitHub OIDC and Workload Identity Federation, then deploys over IAP SSH (`gcloud compute ssh --tunnel-through-iap`) to instance `rohan-noble-vm` (zone `us-central1-a`, project `shining-relic-494616-t5`), where `scripts/remote-deploy.sh` pulls the new image and runs `docker compose up -d`. A direct SSH fallback to `35.239.155.232` runs only when a `DEPLOY_SSH_KEY` secret is set.
-4. Polls `https://portal.sugarandleather.com/` until it responds
+4. Polls `https://partners.sugarandleather.com/` until it responds
 
 **One-time setup:** run `./scripts/setup-gcp-github-deploy.sh` (after `gcloud auth login`) to create the deploy service account and the Workload Identity Federation binding. The workflow reads `GCP_WORKLOAD_IDENTITY_PROVIDER` and `GCP_DEPLOY_SA_EMAIL`; no SSH key is required for the normal path.
 
